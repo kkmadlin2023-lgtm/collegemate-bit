@@ -304,30 +304,101 @@ export const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {deviceTokens.map((tok, idx) => (
-                  <div
-                    key={tok.id || idx}
-                    className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">
-                          Device #{idx + 1} ({tok.device_type || 'WEB'})
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        Registered {formatDistanceToNow(new Date(tok.created_at), { addSuffix: true })}
-                      </span>
-                    </div>
+              <div className="space-y-3">
+                {deviceTokens.map((tok, idx) => {
+                  const info = tok.device_info || {};
+                  return (
+                    <div
+                      key={tok.id || idx}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                            <Smartphone className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {info.browser || 'Browser'} on {info.os || tok.device_type || 'Device'}
+                              </span>
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                {tok.device_type || info.deviceType || 'MOBILE'}
+                              </span>
+                              {info.isStandalonePWA && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                                  PWA
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400">
+                              Registered {formatDistanceToNow(new Date(tok.created_at), { addSuffix: true })}
+                            </span>
+                          </div>
+                        </div>
 
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 font-mono truncate">
-                      <p>Platform: {tok.device_info?.platform || navigator.platform}</p>
-                      <p className="truncate">Token: {tok.token.substring(0, 32)}...</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(tok.token);
+                            alert('FCM Token copied to clipboard!');
+                          }}
+                          className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors"
+                        >
+                          Copy Token
+                        </button>
+                      </div>
+
+                      {/* Hardware & Environment Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Screen Resolution</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
+                            {info.screenResolution || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Timezone</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {info.timezone || 'UTC'}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Language</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {info.language || 'en'}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Touch Interface</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {info.isTouchDevice ? '✓ Touchscreen' : 'Desktop / Pointer'}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Network</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 uppercase font-mono">
+                            {info.connectionType || 'Online'}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
+                          <span className="text-[10px] text-slate-400 block">Device Status</span>
+                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            ● Connected
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Full Token Preview */}
+                      <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-[10px] text-slate-600 dark:text-slate-400 break-all select-all">
+                        <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider mb-0.5">
+                          FCM Device Token:
+                        </span>
+                        {tok.token}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
