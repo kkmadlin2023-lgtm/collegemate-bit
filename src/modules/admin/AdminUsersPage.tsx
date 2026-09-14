@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle } from 'lucide-react';
+import {
+  Search,
+  CheckCircle2,
+  XCircle,
+  Smartphone,
+  Eye,
+  School,
+  Shield,
+  RefreshCw,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth, SUPER_ADMIN_EMAIL } from '../../context/AuthContext';
 import type { Database, AppRole } from '../../types/database.types';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
-import { format } from 'date-fns';
+import { Button } from '../../components/common/Button';
+import { AdminUserDetailModal } from './AdminUserDetailModal';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Role = Database['public']['Tables']['roles']['Row'];
@@ -15,14 +25,17 @@ export const AdminUsersPage: React.FC = () => {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterTab, setFilterTab] = useState<'ALL' | 'STUDENTS' | 'ADMINS' | 'WITH_DEVICES'>('ALL');
   const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const { data: profilesData } = await supabase
         .from('profiles')
-        .select('*, user_roles(role_id, roles(id, name))')
+        .select('*, user_roles(role_id, roles(id, name)), notification_tokens(id, device_type, created_at)')
         .order('created_at', { ascending: false });
 
       if (profilesData) setUsersList(profilesData);
@@ -38,6 +51,30 @@ export const AdminUsersPage: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+
+    // Setup Supabase Realtime Channels for live Web synchronization
+    const profileChannel = supabase
+      .channel('public:admin-users-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        () => fetchUsers()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_roles' },
+        () => fetchUsers()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notification_tokens' },
+        () => fetchUsers()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profileChannel);
+    };
   }, []);
 
   const toggleUserStatus = async (targetUser: Profile) => {
@@ -106,39 +143,106 @@ export const AdminUsersPage: React.FC = () => {
   };
 
   const filteredUsers = usersList.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      u.full_name?.toLowerCase().includes(q) ||
-      u.email?.toLowerCase().includes(q) ||
-      u.student_id?.toLowerCase().includes(q) ||
-      u.department?.toLowerCase().includes(q)
-    );
+    // 1. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        u.full_name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.college_name?.toLowerCase().includes(q) ||
+        u.student_id?.toLowerCase().includes(q) ||
+        u.department?.toLowerCase().includes(q);
+      if (!matchesSearch) return false;
+    }
+
+    // 2. Filter Tabs
+    const roleName = u.user_roles?.[0]?.roles?.name || 'STUDENT';
+    const deviceCount = u.notification_tokens?.length || 0;
+
+    if (filterTab === 'STUDENTS') return roleName === 'STUDENT';
+    if (filterTab === 'ADMINS') return roleName === 'ADMIN' || roleName === 'SUPER_ADMIN';
+    if (filterTab === 'WITH_DEVICES') return deviceCount > 0;
+
+    return true;
   });
 
   return (
     <div className="space-y-6">
+      {/* Detail Modal */}
+      <AdminUserDetailModal
+        isOpen={isDetailModalOpen}
+        user={selectedUser}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedUser(null);
+        }}
+        onUserUpdated={fetchUsers}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            User Directory & Access Control
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              User Directory & Device Diagnostics
+            </h2>
+            <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 animate-pulse">
+              ● Live Realtime
+            </span>
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Search registered students and manage permission roles with audit trail protection.
+            Inspect live campus student accounts, college assignments, FCM push tokens, and permission privileges.
           </p>
         </div>
 
-        <div className="relative min-w-[240px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by name, email, student ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl"
-          />
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+            onClick={fetchUsers}
+          >
+            Refresh
+          </Button>
+          <div className="relative min-w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search student, email, college..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
         </div>
+      </div>
+
+      {/* Filter Tabs & Quick Counter */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="flex items-center gap-1.5">
+          {[
+            { id: 'ALL', label: `All Users (${usersList.length})` },
+            { id: 'STUDENTS', label: 'Students' },
+            { id: 'ADMINS', label: 'Administrators' },
+            { id: 'WITH_DEVICES', label: '📲 With FCM Devices' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFilterTab(tab.id as any)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                filterTab === tab.id
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          Showing <span className="font-bold text-slate-900 dark:text-white">{filteredUsers.length}</span> entries
+        </span>
       </div>
 
       {/* Users Table */}
@@ -148,24 +252,26 @@ export const AdminUsersPage: React.FC = () => {
             <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-4">User Details</th>
-                <th className="py-3 px-4">Student ID / Dept</th>
+                <th className="py-3 px-4">College / University</th>
+                <th className="py-3 px-4">Department / ID</th>
+                <th className="py-3 px-4">FCM Devices</th>
                 <th className="py-3 px-4">Assigned Role</th>
-                <th className="py-3 px-4">Account Status</th>
-                <th className="py-3 px-4">Joined Date</th>
+                <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400">
-                    Loading registered campus members...
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    Loading real-time campus directory...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400">
-                    No users matching search query.
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                    No users matching criteria.
                   </td>
                 </tr>
               ) : (
@@ -175,21 +281,56 @@ export const AdminUsersPage: React.FC = () => {
                     (u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
                       ? 'SUPER_ADMIN'
                       : 'STUDENT');
+                  const deviceCount = u.notification_tokens?.length || 0;
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                    <tr key={u.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors">
                       {/* Name & Email */}
                       <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {u.full_name}
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center flex-shrink-0 text-xs overflow-hidden">
+                            {u.avatar_url ? (
+                              <img src={u.avatar_url} alt={u.full_name} className="w-full h-full object-cover" />
+                            ) : (
+                              u.full_name?.charAt(0).toUpperCase() || 'U'
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {u.full_name}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400">{u.email}</div>
+                      </td>
+
+                      {/* College Name */}
+                      <td className="py-3.5 px-4">
+                        {u.college_name ? (
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                            <School className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                            {u.college_name}
+                          </span>
+                        ) : (
+                          <span className="italic text-amber-500 text-[11px]">Pending Selection</span>
+                        )}
                       </td>
 
                       {/* ID / Dept */}
                       <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
-                        <div>{u.student_id || '—'}</div>
-                        <div className="text-[11px] text-slate-400">{u.department || 'General'}</div>
+                        <div className="font-medium text-slate-900 dark:text-slate-200">{u.department || '—'}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{u.student_id || 'No ID'}</div>
+                      </td>
+
+                      {/* FCM Devices */}
+                      <td className="py-3.5 px-4">
+                        {deviceCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                            <Smartphone className="w-3 h-3" /> {deviceCount} {deviceCount === 1 ? 'Device' : 'Devices'}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">None</span>
+                        )}
                       </td>
 
                       {/* Role */}
@@ -200,7 +341,7 @@ export const AdminUsersPage: React.FC = () => {
                             onChange={(e) =>
                               handleRoleChange(u.id, u.email, e.target.value as AppRole)
                             }
-                            className="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold"
+                            className="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold outline-none"
                           >
                             <option value="STUDENT">STUDENT</option>
                             <option value="MODERATOR">MODERATOR</option>
@@ -211,16 +352,16 @@ export const AdminUsersPage: React.FC = () => {
                           <Badge
                             variant={
                               userRoleName === 'SUPER_ADMIN'
-                                ? 'purple'
+                                ? 'danger'
                                 : userRoleName === 'ADMIN'
                                 ? 'indigo'
                                 : userRoleName === 'MODERATOR'
-                                ? 'warning'
+                                ? 'purple'
                                 : 'neutral'
                             }
                             size="sm"
                           >
-                            {userRoleName}
+                            <Shield className="w-3 h-3 mr-1" /> {userRoleName}
                           </Badge>
                         )}
                       </td>
@@ -228,34 +369,42 @@ export const AdminUsersPage: React.FC = () => {
                       {/* Status */}
                       <td className="py-3.5 px-4">
                         {u.is_active ? (
-                          <span className="inline-flex items-center text-emerald-600 font-semibold gap-1 text-[11px]">
+                          <span className="inline-flex items-center text-emerald-600 dark:text-emerald-400 font-semibold gap-1 text-[11px]">
                             <CheckCircle2 className="w-3.5 h-3.5" /> Active
                           </span>
                         ) : (
-                          <span className="inline-flex items-center text-rose-600 font-semibold gap-1 text-[11px]">
-                            <XCircle className="w-3.5 h-3.5" /> Disabled
+                          <span className="inline-flex items-center text-rose-600 dark:text-rose-400 font-semibold gap-1 text-[11px]">
+                            <XCircle className="w-3.5 h-3.5" /> Suspended
                           </span>
                         )}
                       </td>
 
-                      {/* Joined Date */}
-                      <td className="py-3.5 px-4 text-slate-400 text-[11px]">
-                        {format(new Date(u.created_at), 'MMM d, yyyy')}
-                      </td>
-
-                      {/* Action */}
+                      {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => toggleUserStatus(u)}
-                          disabled={u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
-                          className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
-                            u.is_active
-                              ? 'text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                              : 'text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                          } disabled:opacity-40 disabled:pointer-events-none`}
-                        >
-                          {u.is_active ? 'Disable' : 'Activate'}
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+                            title="View Full Profile & Diagnostics"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => toggleUserStatus(u)}
+                            disabled={u.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
+                            className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                              u.is_active
+                                ? 'text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                                : 'text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                            } disabled:opacity-40 disabled:pointer-events-none`}
+                          >
+                            {u.is_active ? 'Disable' : 'Activate'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -268,3 +417,4 @@ export const AdminUsersPage: React.FC = () => {
     </div>
   );
 };
+

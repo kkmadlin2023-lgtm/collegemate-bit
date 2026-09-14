@@ -4,6 +4,8 @@ import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { CollegeOnboardingModal } from '../profile/CollegeOnboardingModal';
+import { PushNotificationPrompt } from '../notifications/PushNotificationPrompt';
+import { RealtimeNotificationToast } from '../notifications/RealtimeNotificationToast';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -12,6 +14,12 @@ export const AppLayout: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col antialiased">
       {/* Mandatory College Onboarding Modal */}
       <CollegeOnboardingModal />
+
+      {/* Proactive Push Notification Prompt Modal / Banner */}
+      <PushNotificationPrompt />
+
+      {/* Real-time Floating Notification Toast */}
+      <RealtimeNotificationToast />
 
       {/* Top Navbar */}
       <Navbar onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
@@ -32,3 +40,4 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
+
