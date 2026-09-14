@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- CAMPUSMATE DATABASE SCHEMA (MIGRATION 20260914000000)
 -- PostgreSQL / Supabase Schema with Row Level Security (RLS) & Triggers
--- Enhanced with: Immediate & Scheduled Notifications + 7-Day Retention
+-- Enhanced with: College Multi-Campus & College Merging Support + 7-Day Notifications
 -- ==============================================================================
 
 -- Enable UUID extension
@@ -68,7 +68,8 @@ CREATE TYPE broadcast_target AS ENUM (
   'ALL_USERS',
   'STUDENTS_ONLY',
   'ADMINS_ONLY',
-  'SPECIFIC_DEPARTMENT'
+  'SPECIFIC_DEPARTMENT',
+  'SPECIFIC_COLLEGE'
 );
 
 -- ------------------------------------------------------------------------------
@@ -95,12 +96,25 @@ CREATE TABLE IF NOT EXISTS public.roles (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.2 PROFILES TABLE (Linked to auth.users)
+-- 3.2 COLLEGES MASTER / DIRECTORY TABLE
+CREATE TABLE IF NOT EXISTS public.colleges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  code TEXT,
+  aliases TEXT[] DEFAULT '{}',
+  location TEXT,
+  is_active BOOLEAN DEFAULT TRUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 3.3 PROFILES TABLE (Linked to auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
   avatar_url TEXT,
+  college_name TEXT, -- Mandatory college / university name
   student_id TEXT,
   department TEXT,
   phone_number TEXT,
@@ -109,7 +123,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.3 USER ROLES JUNCTION TABLE
+-- 3.4 USER ROLES JUNCTION TABLE
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -119,7 +133,7 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
   CONSTRAINT unique_user_role UNIQUE (user_id, role_id)
 );
 
--- 3.4 CATEGORIES TABLE
+-- 3.5 CATEGORIES TABLE
 CREATE TABLE IF NOT EXISTS public.categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -133,7 +147,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.5 SCHEDULES TABLE (Student timetable & classes)
+-- 3.6 SCHEDULES TABLE (Student timetable & classes)
 CREATE TABLE IF NOT EXISTS public.schedules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -142,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.schedules (
   description TEXT,
   location TEXT,
   instructor TEXT,
-  day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday, 6=Saturday
+  day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   recurrence recurrence_type DEFAULT 'WEEKLY' NOT NULL,
@@ -153,7 +167,7 @@ CREATE TABLE IF NOT EXISTS public.schedules (
   CONSTRAINT check_schedule_time CHECK (end_time > start_time)
 );
 
--- 3.6 REMINDERS TABLE (Tasks & notifications)
+-- 3.7 REMINDERS TABLE (Tasks & notifications)
 CREATE TABLE IF NOT EXISTS public.reminders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -171,7 +185,7 @@ CREATE TABLE IF NOT EXISTS public.reminders (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.7 LOST ITEMS TABLE
+-- 3.8 LOST ITEMS TABLE
 CREATE TABLE IF NOT EXISTS public.lost_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -190,7 +204,7 @@ CREATE TABLE IF NOT EXISTS public.lost_items (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.8 FOUND ITEMS TABLE
+-- 3.9 FOUND ITEMS TABLE
 CREATE TABLE IF NOT EXISTS public.found_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -209,7 +223,7 @@ CREATE TABLE IF NOT EXISTS public.found_items (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.9 CLAIMS TABLE (Student claiming a found item)
+-- 3.10 CLAIMS TABLE (Student claiming a found item)
 CREATE TABLE IF NOT EXISTS public.claims (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   found_item_id UUID NOT NULL REFERENCES public.found_items(id) ON DELETE CASCADE,
@@ -224,7 +238,7 @@ CREATE TABLE IF NOT EXISTS public.claims (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.10 REPORTS TABLE (Flagging inappropriate items/claims)
+-- 3.11 REPORTS TABLE (Flagging inappropriate items/claims)
 CREATE TABLE IF NOT EXISTS public.reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   reporter_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -240,22 +254,21 @@ CREATE TABLE IF NOT EXISTS public.reports (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.11 NOTIFICATIONS TABLE (User In-App Notifications with 7-Day Retention)
+-- 3.12 NOTIFICATIONS TABLE (7-Day Retention Inbox)
 CREATE TABLE IF NOT EXISTS public.notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
-  type TEXT NOT NULL, -- 'REMINDER', 'SCHEDULE', 'LOST_FOUND', 'CLAIM', 'ADMIN_BROADCAST', 'SYSTEM'
+  type TEXT NOT NULL,
   data JSONB DEFAULT '{}'::jsonb,
   is_read BOOLEAN DEFAULT FALSE NOT NULL,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-  -- Retained in notification center for 7 days by default
   expires_at TIMESTAMPTZ DEFAULT (TIMEZONE('utc'::text, NOW()) + INTERVAL '7 days') NOT NULL
 );
 
--- 3.12 ADMIN BROADCASTS TABLE (Immediate & Scheduled Push Notifications)
+-- 3.13 ADMIN BROADCASTS TABLE
 CREATE TABLE IF NOT EXISTS public.admin_broadcasts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -272,7 +285,7 @@ CREATE TABLE IF NOT EXISTS public.admin_broadcasts (
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.13 NOTIFICATION TOKENS TABLE (Firebase FCM tokens)
+-- 3.14 NOTIFICATION TOKENS TABLE (FCM)
 CREATE TABLE IF NOT EXISTS public.notification_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -284,7 +297,7 @@ CREATE TABLE IF NOT EXISTS public.notification_tokens (
   CONSTRAINT unique_user_device_token UNIQUE (user_id, token)
 );
 
--- 3.14 ADMIN LOGS TABLE (Immutable audit trail)
+-- 3.15 ADMIN LOGS TABLE
 CREATE TABLE IF NOT EXISTS public.admin_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   admin_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -297,7 +310,7 @@ CREATE TABLE IF NOT EXISTS public.admin_logs (
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3.15 SYSTEM SETTINGS TABLE
+-- 3.16 SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS public.system_settings (
   key TEXT PRIMARY KEY,
   value JSONB NOT NULL,
@@ -307,29 +320,26 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 );
 
 -- ------------------------------------------------------------------------------
--- 4. INDEXES FOR PERFORMANCE OPTIMIZATION
+-- 4. INDEXES
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_college ON public.profiles(college_name);
+CREATE INDEX IF NOT EXISTS idx_colleges_name ON public.colleges(name);
 CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON public.user_roles(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON public.user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_user_day ON public.schedules(user_id, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_reminders_user_due ON public.reminders(user_id, due_date, is_completed);
 CREATE INDEX IF NOT EXISTS idx_lost_items_status ON public.lost_items(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_lost_items_user ON public.lost_items(user_id);
 CREATE INDEX IF NOT EXISTS idx_found_items_status ON public.found_items(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_found_items_user ON public.found_items(user_id);
 CREATE INDEX IF NOT EXISTS idx_claims_found_item ON public.claims(found_item_id);
-CREATE INDEX IF NOT EXISTS idx_claims_claimant ON public.claims(claimant_id);
-CREATE INDEX IF NOT EXISTS idx_reports_status ON public.reports(status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON public.notifications(user_id, is_read, expires_at);
 CREATE INDEX IF NOT EXISTS idx_admin_broadcasts_schedule ON public.admin_broadcasts(is_scheduled, is_sent, scheduled_for);
-CREATE INDEX IF NOT EXISTS idx_notification_tokens_user ON public.notification_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_created_at ON public.admin_logs(created_at DESC);
 
 -- ------------------------------------------------------------------------------
 -- 5. AUTOMATIC TIMESTAMP TRIGGERS
 -- ------------------------------------------------------------------------------
 CREATE TRIGGER tr_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER tr_colleges_updated_at BEFORE UPDATE ON public.colleges FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_roles_updated_at BEFORE UPDATE ON public.roles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_categories_updated_at BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_schedules_updated_at BEFORE UPDATE ON public.schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -389,7 +399,37 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ------------------------------------------------------------------------------
--- 7. FUNCTION: BROADCAST NOTIFICATION DISPATCHER (IMMEDIATE & SCHEDULED)
+-- 7. COLLEGE MERGE & STANDARDIZATION FUNCTION (FOR ADMINS)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.merge_colleges(target_name TEXT, source_names TEXT[])
+RETURNS INT AS $$
+DECLARE
+  updated_count INT := 0;
+BEGIN
+  -- 1. Update all student profiles matching any source college name variation
+  UPDATE public.profiles
+  SET college_name = target_name,
+      updated_at = TIMEZONE('utc'::text, NOW())
+  WHERE college_name = ANY(source_names)
+    AND college_name <> target_name;
+
+  GET DIAGNOSTICS updated_count = ROW_COUNT;
+
+  -- 2. Upsert into master colleges table and preserve source names as aliases
+  INSERT INTO public.colleges (name, aliases)
+  VALUES (target_name, source_names)
+  ON CONFLICT (name) DO UPDATE
+  SET aliases = ARRAY(
+    SELECT DISTINCT unnest(COALESCE(public.colleges.aliases, '{}') || source_names)
+  ),
+  updated_at = TIMEZONE('utc'::text, NOW());
+
+  RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ------------------------------------------------------------------------------
+-- 8. FUNCTION: BROADCAST NOTIFICATION DISPATCHER (WITH 7-DAY EXPIRY)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.send_admin_broadcast(broadcast_id UUID)
 RETURNS INT AS $$
@@ -402,7 +442,6 @@ BEGIN
     RAISE EXCEPTION 'Broadcast not found';
   END IF;
 
-  -- Insert notification for each targeted user with 7-day retention
   WITH target_users AS (
     SELECT p.id AS user_id
     FROM public.profiles p
@@ -428,7 +467,6 @@ BEGIN
   )
   SELECT COUNT(*) INTO inserted_count FROM inserted_rows;
 
-  -- Mark broadcast as sent
   UPDATE public.admin_broadcasts
   SET is_sent = true,
       sent_at = TIMEZONE('utc'::text, NOW()),
@@ -440,7 +478,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ------------------------------------------------------------------------------
--- 8. NEW USER SIGNUP TRIGGER (GOOGLE OAUTH & SUPER ADMIN AUTO-ASSIGNMENT)
+-- 9. NEW USER SIGNUP TRIGGER
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -448,7 +486,6 @@ DECLARE
   v_role_id UUID;
   v_target_role app_role;
 BEGIN
-  -- Insert into public.profiles
   INSERT INTO public.profiles (id, email, full_name, avatar_url)
   VALUES (
     NEW.id,
@@ -462,17 +499,14 @@ BEGIN
     avatar_url = EXCLUDED.avatar_url,
     updated_at = TIMEZONE('utc'::text, NOW());
 
-  -- Check if user is the designated SUPER_ADMIN
   IF LOWER(NEW.email) = LOWER('kkmadlin2023@gmail.com') THEN
     v_target_role := 'SUPER_ADMIN';
   ELSE
     v_target_role := 'STUDENT';
   END IF;
 
-  -- Fetch role ID
   SELECT id INTO v_role_id FROM public.roles WHERE name = v_target_role;
 
-  -- Assign role in user_roles
   IF v_role_id IS NOT NULL THEN
     INSERT INTO public.user_roles (user_id, role_id)
     VALUES (NEW.id, v_role_id)
@@ -489,9 +523,10 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ------------------------------------------------------------------------------
--- 9. ROW LEVEL SECURITY (RLS) POLICIES
+-- 10. ROW LEVEL SECURITY (RLS) POLICIES
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.colleges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
@@ -507,7 +542,16 @@ ALTER TABLE public.notification_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 
--- 9.1 ROLES POLICIES
+-- Colleges RLS
+CREATE POLICY "Anyone can view active colleges"
+  ON public.colleges FOR SELECT TO authenticated, anon USING (true);
+
+CREATE POLICY "Admins can manage colleges"
+  ON public.colleges FOR ALL TO authenticated
+  USING (public.is_admin_or_superadmin(auth.uid()))
+  WITH CHECK (public.is_admin_or_superadmin(auth.uid()));
+
+-- Roles RLS
 CREATE POLICY "Allow public read access to roles"
   ON public.roles FOR SELECT TO authenticated, anon USING (true);
 
@@ -516,7 +560,7 @@ CREATE POLICY "Only Super Admins can modify roles"
   USING (public.is_super_admin(auth.uid()))
   WITH CHECK (public.is_super_admin(auth.uid()));
 
--- 9.2 PROFILES POLICIES
+-- Profiles RLS
 CREATE POLICY "Authenticated users can read all active profiles"
   ON public.profiles FOR SELECT TO authenticated
   USING (is_active = true OR public.is_admin_or_superadmin(auth.uid()));
@@ -530,7 +574,7 @@ CREATE POLICY "Admins can update any profile"
   USING (public.is_admin_or_superadmin(auth.uid()))
   WITH CHECK (public.is_admin_or_superadmin(auth.uid()));
 
--- 9.3 USER_ROLES POLICIES
+-- User Roles RLS
 CREATE POLICY "Authenticated users can read user roles"
   ON public.user_roles FOR SELECT TO authenticated USING (true);
 
@@ -539,7 +583,7 @@ CREATE POLICY "Only Super Admins can modify user roles"
   USING (public.is_super_admin(auth.uid()))
   WITH CHECK (public.is_super_admin(auth.uid()));
 
--- 9.4 CATEGORIES POLICIES
+-- Categories RLS
 CREATE POLICY "Anyone can view active categories"
   ON public.categories FOR SELECT TO authenticated, anon
   USING (is_active = true OR public.is_admin_or_superadmin(auth.uid()));
@@ -549,7 +593,7 @@ CREATE POLICY "Only Admins can modify categories"
   USING (public.is_admin_or_superadmin(auth.uid()))
   WITH CHECK (public.is_admin_or_superadmin(auth.uid()));
 
--- 9.5 SCHEDULES POLICIES
+-- Schedules RLS
 CREATE POLICY "Users can view only their own schedules"
   ON public.schedules FOR SELECT TO authenticated
   USING (auth.uid() = user_id OR public.is_admin_or_superadmin(auth.uid()));
@@ -566,7 +610,7 @@ CREATE POLICY "Users can delete their own schedules"
   ON public.schedules FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
--- 9.6 REMINDERS POLICIES
+-- Reminders RLS
 CREATE POLICY "Users can view only their own reminders"
   ON public.reminders FOR SELECT TO authenticated
   USING (auth.uid() = user_id OR public.is_admin_or_superadmin(auth.uid()));
@@ -583,7 +627,7 @@ CREATE POLICY "Users can delete their own reminders"
   ON public.reminders FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
--- 9.7 LOST ITEMS POLICIES
+-- Lost Items RLS
 CREATE POLICY "Anyone can view approved lost items, owners can view their own"
   ON public.lost_items FOR SELECT TO authenticated
   USING (status = 'APPROVED' OR auth.uid() = user_id OR public.is_moderator_or_higher(auth.uid()));
@@ -601,7 +645,7 @@ CREATE POLICY "Owners or Admins can delete lost items"
   ON public.lost_items FOR DELETE TO authenticated
   USING (auth.uid() = user_id OR public.is_admin_or_superadmin(auth.uid()));
 
--- 9.8 FOUND ITEMS POLICIES
+-- Found Items RLS
 CREATE POLICY "Anyone can view approved found items, owners can view their own"
   ON public.found_items FOR SELECT TO authenticated
   USING (status = 'APPROVED' OR auth.uid() = user_id OR public.is_moderator_or_higher(auth.uid()));
@@ -615,7 +659,11 @@ CREATE POLICY "Owners can update their own found items"
   USING (auth.uid() = user_id OR public.is_moderator_or_higher(auth.uid()))
   WITH CHECK (auth.uid() = user_id OR public.is_moderator_or_higher(auth.uid()));
 
--- 9.9 CLAIMS POLICIES
+CREATE POLICY "Owners or Admins can delete found items"
+  ON public.found_items FOR DELETE TO authenticated
+  USING (auth.uid() = user_id OR public.is_admin_or_superadmin(auth.uid()));
+
+-- Claims RLS
 CREATE POLICY "Claimants, item posters, and admins can view claims"
   ON public.claims FOR SELECT TO authenticated
   USING (
@@ -633,7 +681,7 @@ CREATE POLICY "Claimants and moderators can update claims"
   USING (auth.uid() = claimant_id OR public.is_moderator_or_higher(auth.uid()))
   WITH CHECK (auth.uid() = claimant_id OR public.is_moderator_or_higher(auth.uid()));
 
--- 9.10 REPORTS POLICIES
+-- Reports RLS
 CREATE POLICY "Users can view their own reports, moderators can view all"
   ON public.reports FOR SELECT TO authenticated
   USING (auth.uid() = reporter_id OR public.is_moderator_or_higher(auth.uid()));
@@ -647,7 +695,7 @@ CREATE POLICY "Moderators can review and resolve reports"
   USING (public.is_moderator_or_higher(auth.uid()))
   WITH CHECK (public.is_moderator_or_higher(auth.uid()));
 
--- 9.11 NOTIFICATIONS POLICIES (With 7-Day Active Filter)
+-- Notifications RLS (7-Day Active Filter)
 CREATE POLICY "Users can view their own active notifications within 7-day window"
   ON public.notifications FOR SELECT TO authenticated
   USING (auth.uid() = user_id AND expires_at > TIMEZONE('utc'::text, NOW()));
@@ -661,19 +709,19 @@ CREATE POLICY "Admins can send direct notifications"
   ON public.notifications FOR INSERT TO authenticated
   WITH CHECK (public.is_admin_or_superadmin(auth.uid()) OR auth.uid() = user_id);
 
--- 9.12 ADMIN BROADCASTS POLICIES
+-- Admin Broadcasts RLS
 CREATE POLICY "Admins can view and manage broadcasts"
   ON public.admin_broadcasts FOR ALL TO authenticated
   USING (public.is_admin_or_superadmin(auth.uid()))
   WITH CHECK (public.is_admin_or_superadmin(auth.uid()));
 
--- 9.13 NOTIFICATION TOKENS POLICIES
+-- Notification Tokens RLS
 CREATE POLICY "Users manage their own device tokens"
   ON public.notification_tokens FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- 9.14 ADMIN LOGS POLICIES
+-- Admin Logs RLS
 CREATE POLICY "Only Admins can view admin logs"
   ON public.admin_logs FOR SELECT TO authenticated
   USING (public.is_admin_or_superadmin(auth.uid()));
@@ -682,7 +730,7 @@ CREATE POLICY "Admins can insert audit logs"
   ON public.admin_logs FOR INSERT TO authenticated
   WITH CHECK (public.is_admin_or_superadmin(auth.uid()));
 
--- 9.15 SYSTEM SETTINGS POLICIES
+-- System Settings RLS
 CREATE POLICY "Anyone can view system settings"
   ON public.system_settings FOR SELECT TO authenticated, anon
   USING (true);

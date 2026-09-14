@@ -16,6 +16,7 @@ import { LostFoundPage } from './modules/lost-found/LostFoundPage';
 // Admin Modules
 import { AdminDashboard } from './modules/admin/AdminDashboard';
 import { AdminUsersPage } from './modules/admin/AdminUsersPage';
+import { AdminCollegesPage } from './modules/admin/AdminCollegesPage';
 import { AdminLostFoundPage } from './modules/admin/AdminLostFoundPage';
 import { AdminNotificationsPage } from './modules/admin/AdminNotificationsPage';
 import { AdminCategoriesPage } from './modules/admin/AdminCategoriesPage';
@@ -46,7 +47,7 @@ export default function App() {
             <Route path="/reminders" element={<RemindersPage />} />
             <Route path="/lost-found" element={<LostFoundPage />} />
 
-            {/* Admin Command Center (Requires Admin / SuperAdmin) */}
+            {/* Admin Command Center */}
             <Route
               path="/admin/dashboard"
               element={
@@ -60,6 +61,14 @@ export default function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <AdminUsersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/colleges"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <AdminCollegesPage />
                 </ProtectedRoute>
               }
             />

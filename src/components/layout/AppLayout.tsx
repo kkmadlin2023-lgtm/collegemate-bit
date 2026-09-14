@@ -3,18 +3,22 @@ import { Outlet } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
+import { CollegeOnboardingModal } from '../profile/CollegeOnboardingModal';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col antialiased">
+      {/* Mandatory College Onboarding Modal */}
+      <CollegeOnboardingModal />
+
       {/* Top Navbar */}
       <Navbar onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
 
       {/* Main Body Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar for Desktop & Sliding Drawer for Mobile */}
+        {/* Sidebar */}
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Dynamic Route Content */}

@@ -52,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: userEmail,
           full_name: userEmail.split('@')[0],
           avatar_url: null,
+          college_name: null,
           student_id: null,
           department: null,
           phone_number: null,

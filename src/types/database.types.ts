@@ -14,7 +14,7 @@ export type ReportStatus = 'PENDING' | 'UNDER_REVIEW' | 'RESOLVED' | 'DISMISSED'
 export type PriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type RecurrenceType = 'NONE' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
 export type DeviceType = 'WEB' | 'ANDROID' | 'IOS';
-export type BroadcastTarget = 'ALL_USERS' | 'STUDENTS_ONLY' | 'ADMINS_ONLY' | 'SPECIFIC_DEPARTMENT';
+export type BroadcastTarget = 'ALL_USERS' | 'STUDENTS_ONLY' | 'ADMINS_ONLY' | 'SPECIFIC_DEPARTMENT' | 'SPECIFIC_COLLEGE';
 
 export interface Database {
   public: {
@@ -43,12 +43,46 @@ export interface Database {
         };
         Relationships: [];
       };
+      colleges: {
+        Row: {
+          id: string;
+          name: string;
+          code: string | null;
+          aliases: string[];
+          location: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          code?: string | null;
+          aliases?: string[];
+          location?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          code?: string | null;
+          aliases?: string[];
+          location?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           id: string;
           email: string;
           full_name: string;
           avatar_url: string | null;
+          college_name: string | null;
           student_id: string | null;
           department: string | null;
           phone_number: string | null;
@@ -61,6 +95,7 @@ export interface Database {
           email: string;
           full_name: string;
           avatar_url?: string | null;
+          college_name?: string | null;
           student_id?: string | null;
           department?: string | null;
           phone_number?: string | null;
@@ -73,6 +108,7 @@ export interface Database {
           email?: string;
           full_name?: string;
           avatar_url?: string | null;
+          college_name?: string | null;
           student_id?: string | null;
           department?: string | null;
           phone_number?: string | null;
@@ -126,7 +162,7 @@ export interface Database {
           description?: string | null;
           icon?: string | null;
           color?: string;
-          type?: 'SCHEDULE' | 'REMINDER' | 'LOST_FOUND' | 'GENERAL';
+          type: 'SCHEDULE' | 'REMINDER' | 'LOST_FOUND' | 'GENERAL';
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -627,6 +663,13 @@ export interface Database {
       send_admin_broadcast: {
         Args: {
           broadcast_id: string;
+        };
+        Returns: number;
+      };
+      merge_colleges: {
+        Args: {
+          target_name: string;
+          source_names: string[];
         };
         Returns: number;
       };
