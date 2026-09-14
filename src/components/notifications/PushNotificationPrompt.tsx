@@ -90,20 +90,36 @@ export const PushNotificationPrompt: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-indigo-600/30">
                 <Bell className="w-5 h-5 animate-pulse" />
               </div>
               <div className="pr-6">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  Enable Device Notifications
+                  Enable Smart Push Notifications
                   <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                  Receive instant alerts for timetable changes, reminder deadlines, and lost item matches on your device.
+                  Never miss an important campus event or class deadline on your device.
                 </p>
               </div>
+            </div>
+
+            {/* Feature Pills */}
+            <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                🌅 Daily M/A/E Briefings
+              </span>
+              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                📚 15m Class Reminders
+              </span>
+              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                ⏰ Task Due Alerts
+              </span>
+              <span className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                💬 Admin Ticket Replies
+              </span>
             </div>
 
             <div className="flex items-center gap-2 pt-1">

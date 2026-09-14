@@ -7,6 +7,7 @@ import {
   Send,
   AlertCircle,
   Info,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -94,6 +95,30 @@ export const AdminNotificationsPage: React.FC = () => {
           }
         });
       }
+    }
+  };
+
+  const handleDeleteBroadcast = async (broadcastId: string) => {
+    if (!confirm('Are you sure you want to delete this broadcast? It will also be removed from all student notification drawers.')) {
+      return;
+    }
+
+    try {
+      // 1. Try RPC function
+      const { error: rpcErr } = await supabase.rpc('delete_admin_broadcast', {
+        p_broadcast_id: broadcastId,
+      });
+
+      if (rpcErr) {
+        // Fallback direct delete
+        await supabase.from('notifications').delete().filter('data->>broadcast_id', 'eq', broadcastId);
+        await supabase.from('admin_broadcasts').delete().eq('id', broadcastId);
+      }
+
+      setBroadcasts((prev) => prev.filter((b) => b.id !== broadcastId));
+    } catch (err: any) {
+      console.error('Error deleting broadcast:', err);
+      alert(err.message || 'Failed to delete broadcast');
     }
   };
 
@@ -323,17 +348,27 @@ export const AdminNotificationsPage: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:items-end flex-shrink-0">
-                  {b.is_scheduled && b.scheduled_for ? (
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      Scheduled for {format(new Date(b.scheduled_for), 'MMM d, h:mm a')}
-                    </span>
-                  ) : b.sent_at ? (
-                    <span>Sent {formatDistanceToNow(new Date(b.sent_at), { addSuffix: true })}</span>
-                  ) : (
-                    <span>Created {formatDistanceToNow(new Date(b.created_at), { addSuffix: true })}</span>
-                  )}
-                  <span className="text-[11px] text-slate-400">7-Day Retention Applied</span>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:items-end">
+                    {b.is_scheduled && b.scheduled_for ? (
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">
+                        Scheduled for {format(new Date(b.scheduled_for), 'MMM d, h:mm a')}
+                      </span>
+                    ) : b.sent_at ? (
+                      <span>Sent {formatDistanceToNow(new Date(b.sent_at), { addSuffix: true })}</span>
+                    ) : (
+                      <span>Created {formatDistanceToNow(new Date(b.created_at), { addSuffix: true })}</span>
+                    )}
+                    <span className="text-[11px] text-slate-400">7-Day Retention Applied</span>
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteBroadcast(b.id)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    title="Delete Broadcast & Remove from Student Inboxes"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}

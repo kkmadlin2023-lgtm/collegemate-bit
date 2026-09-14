@@ -12,6 +12,7 @@ import { StudentDashboard } from './modules/student/StudentDashboard';
 import { SchedulePage } from './modules/schedule/SchedulePage';
 import { RemindersPage } from './modules/reminders/RemindersPage';
 import { LostFoundPage } from './modules/lost-found/LostFoundPage';
+import { FeedbackPage } from './modules/feedback/FeedbackPage';
 
 // Admin Modules
 import { AdminDashboard } from './modules/admin/AdminDashboard';
@@ -19,6 +20,7 @@ import { AdminUsersPage } from './modules/admin/AdminUsersPage';
 import { AdminCollegesPage } from './modules/admin/AdminCollegesPage';
 import { AdminLostFoundPage } from './modules/admin/AdminLostFoundPage';
 import { AdminNotificationsPage } from './modules/admin/AdminNotificationsPage';
+import { AdminFeedbackPage } from './modules/admin/AdminFeedbackPage';
 import { AdminCategoriesPage } from './modules/admin/AdminCategoriesPage';
 import { AdminLogsPage } from './modules/admin/AdminLogsPage';
 import { AdminSettingsPage } from './modules/admin/AdminSettingsPage';
@@ -46,6 +48,7 @@ export default function App() {
             <Route path="/schedule" element={<SchedulePage />} />
             <Route path="/reminders" element={<RemindersPage />} />
             <Route path="/lost-found" element={<LostFoundPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
 
             {/* Admin Command Center */}
             <Route
@@ -85,6 +88,14 @@ export default function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <AdminNotificationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/feedback"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <AdminFeedbackPage />
                 </ProtectedRoute>
               }
             />

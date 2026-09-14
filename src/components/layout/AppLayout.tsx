@@ -6,12 +6,16 @@ import { BottomNav } from './BottomNav';
 import { CollegeOnboardingModal } from '../profile/CollegeOnboardingModal';
 import { PushNotificationPrompt } from '../notifications/PushNotificationPrompt';
 import { RealtimeNotificationToast } from '../notifications/RealtimeNotificationToast';
+import { CampusNotificationScheduler } from '../notifications/CampusNotificationScheduler';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col antialiased">
+      {/* Background Notification & Due Schedule Watcher */}
+      <CampusNotificationScheduler />
+
       {/* Mandatory College Onboarding Modal */}
       <CollegeOnboardingModal />
 

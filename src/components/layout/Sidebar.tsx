@@ -14,6 +14,7 @@ import {
   Sparkles,
   School,
   X,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/schedule', label: 'Schedule Manager', icon: Calendar },
     { to: '/reminders', label: 'Reminders & Tasks', icon: CheckSquare },
     { to: '/lost-found', label: 'Lost & Found Hub', icon: Search },
+    { to: '/feedback', label: 'Support & Feedback', icon: MessageSquare },
   ];
 
   const adminNavItems = [
@@ -39,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { to: '/admin/colleges', label: 'Campuses & Merge', icon: School },
     { to: '/admin/lost-found', label: 'Lost & Found Moderation', icon: Search },
     { to: '/admin/notifications', label: 'Broadcasts & Alerts', icon: Bell },
+    { to: '/admin/feedback', label: 'Feedback Desk', icon: MessageSquare },
     { to: '/admin/categories', label: 'Taxonomy & Categories', icon: FolderTree },
     { to: '/admin/logs', label: 'System Audit Logs', icon: FileText },
     { to: '/admin/settings', label: 'Campus Settings', icon: Settings },
