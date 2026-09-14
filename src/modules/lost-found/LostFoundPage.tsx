@@ -19,6 +19,7 @@ import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ReportItemModal } from './ReportItemModal';
 import { SubmitClaimModal } from './SubmitClaimModal';
+import { MarkLostAsFoundModal } from './MarkLostAsFoundModal';
 import { formatDistanceToNow, format } from 'date-fns';
 
 type LostItem = Database['public']['Tables']['lost_items']['Row'];
@@ -47,6 +48,7 @@ export const LostFoundPage: React.FC = () => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportType, setReportType] = useState<ItemType>('LOST');
   const [claimModalItem, setClaimModalItem] = useState<FoundItem | null>(null);
+  const [selectedLostForFoundModal, setSelectedLostForFoundModal] = useState<LostItem | null>(null);
 
   const fetchLostFoundData = useCallback(async () => {
     setLoading(true);
@@ -506,6 +508,33 @@ export const LostFoundPage: React.FC = () => {
                           </div>
                         )}
                       </div>
+
+                      {/* Action Button: I Found This / Mark Recovered */}
+                      <div className="pt-2">
+                        {item.status === 'RESOLVED' ? (
+                          <div className="w-full py-1.5 text-center rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+                            ✓ Recovered / Found
+                          </div>
+                        ) : user?.id === item.user_id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                            onClick={() => setSelectedLostForFoundModal(item)}
+                          >
+                            ✓ I Got It Back (Mark Recovered)
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="success"
+                            className="w-full shadow-sm shadow-emerald-600/20"
+                            onClick={() => setSelectedLostForFoundModal(item)}
+                          >
+                            🎉 I Found This Item!
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -603,6 +632,12 @@ export const LostFoundPage: React.FC = () => {
         onClose={() => setClaimModalItem(null)}
         onSuccess={fetchLostFoundData}
         foundItem={claimModalItem}
+      />
+      <MarkLostAsFoundModal
+        isOpen={!!selectedLostForFoundModal}
+        onClose={() => setSelectedLostForFoundModal(null)}
+        onSuccess={fetchLostFoundData}
+        lostItem={selectedLostForFoundModal}
       />
     </div>
   );
