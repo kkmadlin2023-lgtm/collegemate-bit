@@ -3,6 +3,7 @@ import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
 import { Button } from '../../components/common/Button';
+import { ImageUploader } from '../../components/common/ImageUploader';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database, ItemType } from '../../types/database.types';
@@ -30,7 +31,6 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
   const [currentLocation, setCurrentLocation] = useState('Campus Security Office');
   const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [rewardOrContact, setRewardOrContact] = useState('');
-  const [imageUrlInput, setImageUrlInput] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -52,17 +52,6 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
     };
     fetchCategories();
   }, []);
-
-  const handleAddImageUrl = () => {
-    if (imageUrlInput.trim()) {
-      setImageUrls((prev) => [...prev, imageUrlInput.trim()]);
-      setImageUrlInput('');
-    }
-  };
-
-  const handleRemoveImage = (index: number) => {
-    setImageUrls((prev) => prev.filter((_, i) => i !== index));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,40 +220,14 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
           />
         </div>
 
-        {/* Image Attachment Section */}
-        <div className="space-y-2 text-left">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            Photo Image URL (Optional)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              placeholder="https://images.unsplash.com/... or cloud image link"
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              className="flex-1 px-4 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
-            />
-            <Button type="button" size="sm" variant="secondary" onClick={handleAddImageUrl}>
-              Add Photo
-            </Button>
-          </div>
-          {imageUrls.length > 0 && (
-            <div className="flex flex-wrap gap-2 pt-2">
-              {imageUrls.map((url, i) => (
-                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-                  <img src={url} alt="Uploaded item" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveImage(i)}
-                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px]"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Photo Upload from Device / Camera */}
+        <ImageUploader
+          images={imageUrls}
+          onChange={setImageUrls}
+          maxImages={4}
+          folder="lost-found"
+          label="Item Photos (Choose from Device or Take Photo)"
+        />
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button type="button" variant="ghost" onClick={onClose}>

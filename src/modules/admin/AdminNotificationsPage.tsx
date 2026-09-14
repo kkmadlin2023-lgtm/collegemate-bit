@@ -27,6 +27,8 @@ export const AdminNotificationsPage: React.FC = () => {
   const [broadcasts, setBroadcasts] = useState<AdminBroadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [registeredDevices, setRegisteredDevices] = useState(0);
+  const [testPushSent, setTestPushSent] = useState(false);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -50,10 +52,48 @@ export const AdminNotificationsPage: React.FC = () => {
       if (!error && data) {
         setBroadcasts(data);
       }
+
+      // Fetch active device tokens count
+      const { count } = await supabase
+        .from('notification_tokens')
+        .select('*', { count: 'exact', head: true });
+      if (count !== null) {
+        setRegisteredDevices(count);
+      }
     } catch (err) {
       console.error('Error fetching broadcasts:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendTestPush = () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try {
+          new Notification('📢 CampusMate Test Alert', {
+            body: 'Your device is successfully receiving instant push notifications!',
+            icon: '/favicon.ico',
+          });
+          setTestPushSent(true);
+          setTimeout(() => setTestPushSent(false), 4000);
+        } catch {
+          alert('Test push triggered! Make sure browser notifications are enabled.');
+        }
+      } else {
+        Notification.requestPermission().then((perm) => {
+          if (perm === 'granted') {
+            new Notification('📢 CampusMate Test Alert', {
+              body: 'Push notifications successfully enabled!',
+              icon: '/favicon.ico',
+            });
+            setTestPushSent(true);
+            setTimeout(() => setTestPushSent(false), 4000);
+          } else {
+            alert('Notification permission was not granted. Please allow notifications in browser site settings.');
+          }
+        });
+      }
     }
   };
 
@@ -164,18 +204,60 @@ export const AdminNotificationsPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          size="sm"
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            setScheduledDate(tomorrow.toISOString().split('T')[0]);
-            setIsModalOpen(true);
-          }}
-        >
-          Create Broadcast Notice
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleSendTestPush}
+          >
+            {testPushSent ? '✓ Sent Test Push!' : '📲 Send Test Push to My Device'}
+          </Button>
+          <Button
+            size="sm"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => {
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              setScheduledDate(tomorrow.toISOString().split('T')[0]);
+              setIsModalOpen(true);
+            }}
+          >
+            Create Broadcast Notice
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Dispatches</p>
+            <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">{broadcasts.length}</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
+            <Megaphone className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Registered FCM Devices</p>
+            <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">{registeredDevices} Devices</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Retention Period</p>
+            <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">7 Days Auto-Expire</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+            <Clock className="w-5 h-5" />
+          </div>
+        </div>
       </div>
 
       {/* 7-Day Retention Notice Card */}
