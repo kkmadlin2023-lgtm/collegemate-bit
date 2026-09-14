@@ -66,3 +66,62 @@ BEGIN
   RETURN updated_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 4. Safe Auth User Created Trigger (prevents Database error saving new user)
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+DECLARE
+  v_role_id uuid;
+  v_is_super boolean;
+BEGIN
+  v_is_super := LOWER(COALESCE(NEW.email, '')) = 'kkmadlin2023@gmail.com';
+
+  INSERT INTO public.profiles (
+    id,
+    email,
+    full_name,
+    avatar_url,
+    college_name,
+    is_active,
+    created_at,
+    updated_at
+  ) VALUES (
+    NEW.id,
+    COALESCE(NEW.email, ''),
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(COALESCE(NEW.email, 'student'), '@', 1)),
+    NEW.raw_user_meta_data->>'avatar_url',
+    NULL,
+    TRUE,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+    avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url),
+    updated_at = NOW();
+
+  IF v_is_super THEN
+    SELECT id INTO v_role_id FROM public.roles WHERE name = 'SUPER_ADMIN';
+  ELSE
+    SELECT id INTO v_role_id FROM public.roles WHERE name = 'STUDENT';
+  END IF;
+
+  IF v_role_id IS NOT NULL THEN
+    INSERT INTO public.user_roles (user_id, role_id)
+    VALUES (NEW.id, v_role_id)
+    ON CONFLICT (user_id, role_id) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
