@@ -1,7 +1,18 @@
 import { supabase } from '../lib/supabase';
-import { showLocalDeviceNotification } from '../lib/firebase';
+import { showLocalDeviceNotification, sendServerPush } from '../lib/firebase';
 
 const alertedItems = new Set<string>();
+
+/**
+ * Sends a notification both locally (if tab is open) AND via FCM server push
+ * (works even when the page is completely CLOSED — true background alarm).
+ */
+async function pushAlarm(userId: string, title: string, body: string, type: string, data: Record<string, string> = {}) {
+  // Local notification for when the app is open
+  showLocalDeviceNotification(title, body);
+  // Server push via FCM — delivered to device even when browser is closed
+  await sendServerPush(userId, title, body, type, data);
+}
 
 /**
  * Checks if any of the user's classes or task reminders are due within the next 15 minutes,
@@ -41,8 +52,6 @@ export async function checkAndNotifyDueSchedulesAndTasks(userId: string): Promis
               ? `Starts in ${diffMinutes} min at ${sched.start_time}${sched.location ? ` (${sched.location})` : ''}.`
               : `Starting now at ${sched.start_time}${sched.location ? ` (${sched.location})` : ''}.`;
 
-            showLocalDeviceNotification(title, body);
-
             // Persist in-app notification with 7-day retention
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 7);
@@ -55,6 +64,12 @@ export async function checkAndNotifyDueSchedulesAndTasks(userId: string): Promis
               data: { schedule_id: sched.id, location: sched.location },
               expires_at: expiresAt.toISOString(),
             } as any);
+
+            // Fire FCM server push — works even when page is closed
+            await pushAlarm(userId, title, body, 'SCHEDULE_ALERT', {
+              schedule_id: sched.id,
+              location: sched.location || '',
+            });
           }
         }
       }
@@ -81,9 +96,7 @@ export async function checkAndNotifyDueSchedulesAndTasks(userId: string): Promis
           const title = `⏰ Reminder Due: ${rem.title}`;
           const body = rem.description
             ? `${rem.description} (Priority: ${rem.priority})`
-            : `Your scheduled task is due now!`;
-
-          showLocalDeviceNotification(title, body);
+            : `Your scheduled task is due now! Priority: ${rem.priority}`;
 
           const expiresAt = new Date();
           expiresAt.setDate(expiresAt.getDate() + 7);
@@ -96,6 +109,12 @@ export async function checkAndNotifyDueSchedulesAndTasks(userId: string): Promis
             data: { reminder_id: rem.id, priority: rem.priority },
             expires_at: expiresAt.toISOString(),
           } as any);
+
+          // Fire FCM server push (alarm-type) — works even when page is closed
+          await pushAlarm(userId, title, body, 'REMINDER_ALARM', {
+            reminder_id: rem.id,
+            priority: rem.priority,
+          });
         }
       }
     }

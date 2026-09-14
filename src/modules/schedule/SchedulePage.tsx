@@ -9,6 +9,7 @@ import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ScheduleModal } from './ScheduleModal';
 import { formatTime, getDayName, getDayShortName } from '../../lib/utils';
+import { FullCalendarView } from '../../components/calendar/FullCalendarView';
 
 type Schedule = Database['public']['Tables']['schedules']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -17,7 +18,7 @@ export const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [viewMode, setViewMode] = useState<'WEEK' | 'DAY'>('WEEK');
+  const [viewMode, setViewMode] = useState<'WEEK' | 'DAY' | 'CALENDAR'>('WEEK');
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
@@ -104,6 +105,16 @@ export const SchedulePage: React.FC = () => {
             >
               Day View
             </button>
+            <button
+              onClick={() => setViewMode('CALENDAR')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                viewMode === 'CALENDAR'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              📅 Calendar
+            </button>
           </div>
 
           <Button
@@ -119,7 +130,8 @@ export const SchedulePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Category Filter Badges */}
+      {/* Category Filter Badges — hidden in Calendar view */}
+      {viewMode !== 'CALENDAR' && (
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <button
           onClick={() => setSelectedCategory('ALL')}
@@ -145,6 +157,7 @@ export const SchedulePage: React.FC = () => {
           </button>
         ))}
       </div>
+      )}
 
       {/* DAY VIEW */}
       {viewMode === 'DAY' && (
@@ -313,6 +326,11 @@ export const SchedulePage: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {/* CALENDAR VIEW */}
+      {viewMode === 'CALENDAR' && (
+        <FullCalendarView />
       )}
 
       {/* Modal */}

@@ -18,6 +18,7 @@ import { Badge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ReminderModal } from './ReminderModal';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
+import { FullCalendarView } from '../../components/calendar/FullCalendarView';
 
 type Reminder = Database['public']['Tables']['reminders']['Row'];
 
@@ -25,6 +26,7 @@ export const RemindersPage: React.FC = () => {
   const { user } = useAuth();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'LIST' | 'CALENDAR'>('LIST');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ACTIVE');
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
 
@@ -127,172 +129,204 @@ export const RemindersPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          size="sm"
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => {
-            setReminderToEdit(null);
-            setIsModalOpen(true);
-          }}
-        >
-          New Reminder
-        </Button>
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-        {/* Status Tabs */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-          <button
-            onClick={() => setStatusFilter('ACTIVE')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              statusFilter === 'ACTIVE'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            Active ({reminders.filter((r) => !r.is_completed).length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('COMPLETED')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              statusFilter === 'COMPLETED'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            Completed ({reminders.filter((r) => r.is_completed).length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              statusFilter === 'ALL'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            All
-          </button>
-        </div>
-
-        {/* Priority Filter */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400 font-medium">Priority:</span>
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200"
-          >
-            <option value="ALL">All Priorities</option>
-            <option value="URGENT">Urgent</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Reminders List */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="space-y-3">
-            <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
-            <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+            <button
+              onClick={() => setViewMode('LIST')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                viewMode === 'LIST'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              List View
+            </button>
+            <button
+              onClick={() => setViewMode('CALENDAR')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                viewMode === 'CALENDAR'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              📅 Calendar
+            </button>
           </div>
-        ) : filteredReminders.length === 0 ? (
-          <EmptyState
-            icon={<CheckSquare className="w-6 h-6" />}
-            title="No Reminders Found"
-            description="All caught up! You have no tasks matching this filter."
-            actionLabel="Add New Reminder"
-            onAction={() => {
+
+          <Button
+            size="sm"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => {
               setReminderToEdit(null);
               setIsModalOpen(true);
             }}
-          />
-        ) : (
-          filteredReminders.map((item) => {
-            const isOverdue = !item.is_completed && isPast(new Date(item.due_date));
+          >
+            New Reminder
+          </Button>
+        </div>
+      </div>
 
-            return (
-              <Card
-                key={item.id}
-                hoverable
-                className={`p-4 flex items-center justify-between transition-all ${
-                  item.is_completed ? 'opacity-60 bg-slate-50/50 dark:bg-slate-900/50' : ''
+      {/* List View Mode */}
+      {viewMode === 'LIST' ? (
+        <>
+          {/* Filter Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+            {/* Status Tabs */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              <button
+                onClick={() => setStatusFilter('ACTIVE')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  statusFilter === 'ACTIVE'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
-                <div className="flex items-start gap-3.5">
-                  <button
-                    onClick={() => toggleComplete(item)}
-                    className="mt-0.5 p-0.5 rounded-lg text-slate-400 hover:text-emerald-600 transition-colors"
+                Active ({reminders.filter((r) => !r.is_completed).length})
+              </button>
+              <button
+                onClick={() => setStatusFilter('COMPLETED')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  statusFilter === 'COMPLETED'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                Completed ({reminders.filter((r) => r.is_completed).length})
+              </button>
+              <button
+                onClick={() => setStatusFilter('ALL')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  statusFilter === 'ALL'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                All
+              </button>
+            </div>
+
+            {/* Priority Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Priority:</span>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200"
+              >
+                <option value="ALL">All Priorities</option>
+                <option value="URGENT">Urgent</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reminders List */}
+          <div className="space-y-3">
+            {loading ? (
+              <div className="space-y-3">
+                <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
+                <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
+              </div>
+            ) : filteredReminders.length === 0 ? (
+              <EmptyState
+                icon={<CheckSquare className="w-6 h-6" />}
+                title="No Reminders Found"
+                description="All caught up! You have no tasks matching this filter."
+                actionLabel="Add New Reminder"
+                onAction={() => {
+                  setReminderToEdit(null);
+                  setIsModalOpen(true);
+                }}
+              />
+            ) : (
+              filteredReminders.map((item) => {
+                const isOverdue = !item.is_completed && isPast(new Date(item.due_date));
+
+                return (
+                  <Card
+                    key={item.id}
+                    hoverable
+                    className={`p-4 flex items-center justify-between transition-all ${
+                      item.is_completed ? 'opacity-60 bg-slate-50/50 dark:bg-slate-900/50' : ''
+                    }`}
                   >
-                    {item.is_completed ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 fill-emerald-100 dark:fill-emerald-950" />
-                    ) : (
-                      <Circle className="w-5 h-5 hover:text-indigo-600" />
-                    )}
-                  </button>
-
-                  <div className="space-y-1">
-                    <h4
-                      className={`text-sm font-bold text-slate-900 dark:text-white ${
-                        item.is_completed ? 'line-through text-slate-400 dark:text-slate-500' : ''
-                      }`}
-                    >
-                      {item.title}
-                    </h4>
-
-                    {item.description && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {item.description}
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
-                      <span
-                        className={`flex items-center gap-1 font-semibold ${
-                          isOverdue
-                            ? 'text-rose-600 dark:text-rose-400'
-                            : 'text-slate-600 dark:text-slate-400'
-                        }`}
+                    <div className="flex items-start gap-3.5">
+                      <button
+                        onClick={() => toggleComplete(item)}
+                        className="mt-0.5 p-0.5 rounded-lg text-slate-400 hover:text-emerald-600 transition-colors"
                       >
-                        <Clock className="w-3.5 h-3.5" />
-                        {formatDueDate(item.due_date)} {isOverdue && '(Overdue)'}
-                      </span>
-                      {getPriorityBadge(item.priority)}
-                      {item.notify_before_minutes > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                          <Bell className="w-3 h-3 text-indigo-500" />
-                          {item.notify_before_minutes}m before
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                        {item.is_completed ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 fill-emerald-100 dark:fill-emerald-950" />
+                        ) : (
+                          <Circle className="w-5 h-5 hover:text-indigo-600" />
+                        )}
+                      </button>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      setReminderToEdit(item);
-                      setIsModalOpen(true);
-                    }}
-                    className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </Card>
-            );
-          })
-        )}
-      </div>
+                      <div className="space-y-1">
+                        <h4
+                          className={`text-sm font-bold text-slate-900 dark:text-white ${
+                            item.is_completed ? 'line-through text-slate-400 dark:text-slate-500' : ''
+                          }`}
+                        >
+                          {item.title}
+                        </h4>
+
+                        {item.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {item.description}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                          <span
+                            className={`flex items-center gap-1 font-semibold ${
+                              isOverdue
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            {formatDueDate(item.due_date)} {isOverdue && '(Overdue)'}
+                          </span>
+                          {getPriorityBadge(item.priority)}
+                          {item.notify_before_minutes > 0 && (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                              <Bell className="w-3 h-3 text-indigo-500" />
+                              {item.notify_before_minutes}m before
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setReminderToEdit(item);
+                          setIsModalOpen(true);
+                        }}
+                        className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </>
+      ) : (
+        <FullCalendarView />
+      )}
 
       {/* Modal */}
       <ReminderModal

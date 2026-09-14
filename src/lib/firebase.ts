@@ -1,4 +1,4 @@
-﻿import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from 'firebase/messaging';
 import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { supabase } from './supabase';
@@ -266,15 +266,12 @@ export async function setupForegroundNotificationListener(
 }
 
 /**
- * Send an immediate browser notification directly to the user's device
+ * Send an immediate browser notification directly to the user's device (in-browser only).
  */
 export function showLocalDeviceNotification(title: string, body: string, icon = '/favicon.ico') {
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification(title, {
-        body,
-        icon,
-      });
+      new Notification(title, { body, icon });
     } catch {
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.ready.then((reg) => {
@@ -282,5 +279,62 @@ export function showLocalDeviceNotification(title: string, body: string, icon = 
         });
       }
     }
+  }
+}
+
+/**
+ * Send a TRUE server-side push via Supabase Edge Function → FCM HTTP v1 API.
+ * Delivers push even when the browser / app is COMPLETELY CLOSED.
+ * Falls back to local notification if edge function unavailable.
+ */
+export async function sendServerPush(
+  userId: string,
+  title: string,
+  body: string,
+  type: string = 'GENERAL',
+  extraData: Record<string, string> = {}
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bzvwqhgwnrigvypjttmf.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+    // Get FCM tokens stored for this user
+    const { supabase: sb } = await import('./supabase');
+    const { data: tokenRows } = await sb
+      .from('notification_tokens')
+      .select('token')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    const tokens = (tokenRows || []).map((r: any) => r.token).filter(Boolean);
+
+    if (tokens.length === 0) {
+      showLocalDeviceNotification(title, body);
+      return { success: true };
+    }
+
+    const edgeUrl = `${supabaseUrl}/functions/v1/send-fcm-push`;
+    const resp = await fetch(edgeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ tokens, title, message: body, type, data: extraData }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.warn('[sendServerPush] Edge function error:', errText);
+      showLocalDeviceNotification(title, body);
+      return { success: false, error: errText };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[sendServerPush] Error:', err.message);
+    showLocalDeviceNotification(title, body);
+    return { success: false, error: err.message };
   }
 }
