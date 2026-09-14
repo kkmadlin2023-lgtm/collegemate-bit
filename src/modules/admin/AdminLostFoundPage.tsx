@@ -7,6 +7,7 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { format } from 'date-fns';
+import { Trash2 } from 'lucide-react';
 
 export const AdminLostFoundPage: React.FC = () => {
   const { user } = useAuth();
@@ -54,6 +55,31 @@ export const AdminLostFoundPage: React.FC = () => {
   useEffect(() => {
     fetchModerationData();
   }, []);
+
+  const handleDeleteItem = async (type: 'LOST' | 'FOUND', id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${title}"?`)) {
+      return;
+    }
+
+    try {
+      const table = type === 'LOST' ? 'lost_items' : 'found_items';
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+
+      await supabase.from('admin_logs').insert({
+        admin_id: user!.id,
+        action: `${type}_ITEM_DELETED`,
+        target_table: table,
+        target_id: id,
+        details: { title },
+      } as any);
+
+      fetchModerationData();
+    } catch (err: any) {
+      console.error(`Error deleting ${type} item:`, err);
+      alert(err.message || 'Failed to delete item.');
+    }
+  };
 
   const handleUpdateItemStatus = async (
     type: 'LOST' | 'FOUND',
@@ -282,6 +308,13 @@ export const AdminLostFoundPage: React.FC = () => {
                         Reject
                       </Button>
                     )}
+                    <button
+                      onClick={() => handleDeleteItem('LOST', item.id, item.title)}
+                      title="Permanently Delete"
+                      className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))
@@ -340,6 +373,13 @@ export const AdminLostFoundPage: React.FC = () => {
                         Mark Returned
                       </Button>
                     )}
+                    <button
+                      onClick={() => handleDeleteItem('FOUND', item.id, item.title)}
+                      title="Permanently Delete"
+                      className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))

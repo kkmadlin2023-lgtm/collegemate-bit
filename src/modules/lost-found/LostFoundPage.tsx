@@ -9,6 +9,7 @@ import {
   Gift,
   School,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -30,7 +31,8 @@ type Claim = Database['public']['Tables']['claims']['Row'] & {
 type Category = Database['public']['Tables']['categories']['Row'];
 
 export const LostFoundPage: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, isModerator } = useAuth();
+  const canManageAll = isSuperAdmin || isAdmin || isModerator;
 
   const [activeTab, setActiveTab] = useState<'ALL' | 'LOST' | 'FOUND' | 'MY_REPORTS' | 'MY_CLAIMS'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,6 +51,23 @@ export const LostFoundPage: React.FC = () => {
   const [reportType, setReportType] = useState<ItemType>('LOST');
   const [claimModalItem, setClaimModalItem] = useState<FoundItem | null>(null);
   const [selectedLostForFoundModal, setSelectedLostForFoundModal] = useState<LostItem | null>(null);
+
+  const handleDeleteItem = async (type: 'LOST' | 'FOUND', id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) {
+      return;
+    }
+
+    try {
+      const table = type === 'LOST' ? 'lost_items' : 'found_items';
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+
+      fetchLostFoundData();
+    } catch (err: any) {
+      console.error(`Error deleting ${type} item:`, err);
+      alert(err.message || 'Failed to delete item.');
+    }
+  };
 
   const fetchLostFoundData = useCallback(async () => {
     setLoading(true);
@@ -509,30 +528,42 @@ export const LostFoundPage: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Action Button: I Found This / Mark Recovered */}
-                      <div className="pt-2">
-                        {item.status === 'RESOLVED' ? (
-                          <div className="w-full py-1.5 text-center rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
-                            ✓ Recovered / Found
-                          </div>
-                        ) : user?.id === item.user_id ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                            onClick={() => setSelectedLostForFoundModal(item)}
+                      {/* Action Button: I Found This / Mark Recovered & Admin Delete */}
+                      <div className="pt-2 flex items-center gap-2">
+                        <div className="flex-1">
+                          {item.status === 'RESOLVED' ? (
+                            <div className="w-full py-1.5 text-center rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+                              ✓ Recovered / Found
+                            </div>
+                          ) : user?.id === item.user_id ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                              onClick={() => setSelectedLostForFoundModal(item)}
+                            >
+                              ✓ I Got It Back (Mark Recovered)
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="w-full shadow-sm shadow-emerald-600/20"
+                              onClick={() => setSelectedLostForFoundModal(item)}
+                            >
+                              🎉 I Found This Item!
+                            </Button>
+                          )}
+                        </div>
+
+                        {(canManageAll || user?.id === item.user_id) && (
+                          <button
+                            onClick={() => handleDeleteItem('LOST', item.id, item.title)}
+                            title="Delete Lost Listing"
+                            className="p-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex-shrink-0"
                           >
-                            ✓ I Got It Back (Mark Recovered)
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="success"
-                            className="w-full shadow-sm shadow-emerald-600/20"
-                            onClick={() => setSelectedLostForFoundModal(item)}
-                          >
-                            🎉 I Found This Item!
-                          </Button>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -602,16 +633,28 @@ export const LostFoundPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {user && item.user_id !== user.id && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          className="w-full mt-2"
-                          onClick={() => setClaimModalItem(item)}
-                        >
-                          This is Mine (Claim Item)
-                        </Button>
-                      )}
+                      <div className="pt-2 flex items-center gap-2">
+                        {user && item.user_id !== user.id && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            className="flex-1"
+                            onClick={() => setClaimModalItem(item)}
+                          >
+                            This is Mine (Claim Item)
+                          </Button>
+                        )}
+
+                        {(canManageAll || user?.id === item.user_id) && (
+                          <button
+                            onClick={() => handleDeleteItem('FOUND', item.id, item.title)}
+                            title="Delete Found Listing"
+                            className="p-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </Card>
                 ))}
