@@ -9,6 +9,7 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowRight,
+  UserCog,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +21,7 @@ import { Card } from '../../components/common/Card';
 import { ScheduleModal } from '../schedule/ScheduleModal';
 import { ReminderModal } from '../reminders/ReminderModal';
 import { ReportItemModal } from '../lost-found/ReportItemModal';
+import { EditProfileModal } from '../../components/profile/EditProfileModal';
 import { formatTime, getDayName } from '../../lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
 
@@ -41,6 +43,7 @@ export const StudentDashboard: React.FC = () => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [reportType, setReportType] = useState<'LOST' | 'FOUND'>('LOST');
 
   const currentDayIndex = new Date().getDay();
@@ -182,6 +185,14 @@ export const StudentDashboard: React.FC = () => {
               }}
             >
               Report Found
+            </Button>
+            <Button
+              size="sm"
+              className="bg-white/10 text-white hover:bg-white/20 border-white/20 shadow-none col-span-2 sm:col-span-1"
+              leftIcon={<UserCog className="w-4 h-4" />}
+              onClick={() => setIsProfileModalOpen(true)}
+            >
+              Edit Profile
             </Button>
           </div>
         </div>
@@ -420,6 +431,11 @@ export const StudentDashboard: React.FC = () => {
         onClose={() => setIsReportModalOpen(false)}
         onSuccess={fetchDashboardData}
         defaultType={reportType}
+      />
+      <EditProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onProfileUpdated={fetchDashboardData}
       />
     </div>
   );

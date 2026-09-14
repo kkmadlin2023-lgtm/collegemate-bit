@@ -13,9 +13,11 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  UserX,
+  UserCheck,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, SUPER_ADMIN_EMAIL } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
@@ -142,9 +144,61 @@ export const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
     }
   };
 
+  const [togglingStatus, setTogglingStatus] = useState(false);
+
+  const handleToggleStatus = async () => {
+    if (!targetUser || !currentAdmin) return;
+    if (targetUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      alert('Cannot deactivate the root Super Admin account.');
+      return;
+    }
+
+    const newStatus = !targetUser.is_active;
+    const confirmMsg = newStatus
+      ? `Re-activate account for "${targetUser.full_name || targetUser.email}"?\n\nThey will regain permission to log in and use CampusMate.`
+      : `Are you sure you want to DISABLE/SUSPEND "${targetUser.full_name || targetUser.email}"?\n\nThey will be BLOCKED from logging in immediately.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setTogglingStatus(true);
+    try {
+      const { error: rpcErr } = await supabase.rpc('admin_toggle_user_active_status', {
+        p_target_user_id: targetUser.id,
+        p_is_active: newStatus,
+        p_reason: newStatus ? 'Re-activated by administrator' : 'Suspended by administrator',
+      });
+
+      if (rpcErr) {
+        console.warn('RPC toggle failed, using direct table update:', rpcErr.message);
+        const { error } = await supabase
+          .from('profiles')
+          .update({ is_active: newStatus, updated_at: new Date().toISOString() } as any)
+          .eq('id', targetUser.id);
+
+        if (error) throw error;
+
+        await supabase.from('admin_logs').insert({
+          admin_id: currentAdmin.id,
+          action: newStatus ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+          entity_type: 'USER',
+          entity_id: targetUser.id,
+          details: { email: targetUser.email, is_active: newStatus },
+        } as any);
+      }
+
+      targetUser.is_active = newStatus;
+      if (onUserUpdated) onUserUpdated();
+    } catch (err: any) {
+      console.error('Error modifying user status:', err);
+      alert(err.message || 'Failed to update account status.');
+    } finally {
+      setTogglingStatus(false);
+    }
+  };
+
   if (!targetUser) return null;
 
-  const roleName = targetUser.user_roles?.[0]?.roles?.name || 'STUDENT';
+  const roleName = targetUser.user_roles?.[0]?.roles?.name || targetUser.role_name || 'STUDENT';
 
   return (
     <Modal
@@ -188,20 +242,34 @@ export const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
             </div>
           </div>
 
-          <Badge
-            variant={
-              roleName === 'SUPER_ADMIN'
-                ? 'danger'
-                : roleName === 'ADMIN'
-                ? 'indigo'
-                : roleName === 'MODERATOR'
-                ? 'purple'
-                : 'neutral'
-            }
-            size="md"
-          >
-            <Shield className="w-3.5 h-3.5 mr-1" /> {roleName}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={
+                roleName === 'SUPER_ADMIN'
+                  ? 'danger'
+                  : roleName === 'ADMIN'
+                  ? 'indigo'
+                  : roleName === 'MODERATOR'
+                  ? 'purple'
+                  : 'neutral'
+              }
+              size="md"
+            >
+              <Shield className="w-3.5 h-3.5 mr-1" /> {roleName}
+            </Badge>
+
+            {targetUser.email?.toLowerCase() !== SUPER_ADMIN_EMAIL.toLowerCase() && (
+              <Button
+                size="sm"
+                variant={targetUser.is_active ? 'danger' : 'secondary'}
+                isLoading={togglingStatus}
+                onClick={handleToggleStatus}
+                leftIcon={targetUser.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+              >
+                {targetUser.is_active ? 'Disable Account' : 'Re-activate Account'}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Tab Navigation */}

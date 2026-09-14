@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, LogOut, Menu, Shield, User, Sparkles } from 'lucide-react';
+import { Bell, LogOut, Menu, Shield, User, Sparkles, UserCog } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Badge } from '../common/Badge';
+import { ThemeToggle } from '../common/ThemeToggle';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
+import { EditProfileModal } from '../profile/EditProfileModal';
 import { supabase } from '../../lib/supabase';
 
 interface NavbarProps {
@@ -12,6 +14,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const { user, profile, isSuperAdmin, isAdmin, signOut } = useAuth();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchUnreadCount = async () => {
@@ -29,28 +32,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchUnreadCount();
-      const channel = supabase
-        .channel('public:notifications-badge')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            fetchUnreadCount();
-          }
-        )
-        .subscribe();
+    if (!user) return;
+    fetchUnreadCount();
+    const channel = supabase
+      .channel('public:notifications-badge')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchUnreadCount();
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   return (
@@ -77,7 +79,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         </div>
 
         {/* Right Side */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Dark Mode Theme Toggle */}
+          <ThemeToggle />
+
           {/* Notification Bell Button */}
           <button
             onClick={() => setIsNotificationOpen(true)}
@@ -92,45 +97,52 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             )}
           </button>
 
-          {/* User Profile Pill */}
+          {/* User Profile Pill & Quick Edit */}
           <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">
-                {profile?.full_name || user?.email?.split('@')[0] || 'Student'}
-              </span>
-              <div className="mt-0.5">
-                {isSuperAdmin ? (
-                  <Badge variant="purple" size="sm">
-                    <Shield className="w-2.5 h-2.5 mr-0.5" /> SUPER ADMIN
-                  </Badge>
-                ) : isAdmin ? (
-                  <Badge variant="indigo" size="sm">
-                    <Shield className="w-2.5 h-2.5 mr-0.5" /> ADMIN
-                  </Badge>
+            <button
+              onClick={() => setIsProfileModalOpen(true)}
+              className="flex items-center gap-2 p-1.5 -m-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-left group"
+              title="Click to Edit Profile"
+            >
+              <div className="hidden sm:flex flex-col items-end">
+                <span className="text-xs font-semibold text-slate-900 dark:text-white leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-1">
+                  {profile?.full_name || user?.email?.split('@')[0] || 'Student'}
+                  <UserCog className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-500 transition-opacity" />
+                </span>
+                <div className="mt-0.5">
+                  {isSuperAdmin ? (
+                    <Badge variant="purple" size="sm">
+                      <Shield className="w-2.5 h-2.5 mr-0.5" /> SUPER ADMIN
+                    </Badge>
+                  ) : isAdmin ? (
+                    <Badge variant="indigo" size="sm">
+                      <Shield className="w-2.5 h-2.5 mr-0.5" /> ADMIN
+                    </Badge>
+                  ) : (
+                    <Badge variant="neutral" size="sm">
+                      STUDENT
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden ring-1 ring-indigo-500/20 group-hover:ring-indigo-500 transition-all">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <Badge variant="neutral" size="sm">
-                    STUDENT
-                  </Badge>
+                  profile?.full_name?.charAt(0) || user?.email?.charAt(0) || <User className="w-4 h-4" />
                 )}
               </div>
-            </div>
-
-            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden ring-1 ring-indigo-500/20">
-              {profile?.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt="Avatar"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                profile?.full_name?.charAt(0) || user?.email?.charAt(0) || <User className="w-4 h-4" />
-              )}
-            </div>
+            </button>
 
             {/* Logout button */}
             <button
               onClick={() => signOut()}
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors ml-1"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -144,6 +156,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         isOpen={isNotificationOpen}
         onClose={() => setIsNotificationOpen(false)}
         onUnreadCountChange={(count) => setUnreadCount(count)}
+      />
+
+      {/* Edit Own Profile Modal */}
+      <EditProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
       />
     </>
   );

@@ -27,7 +27,7 @@ export const AdminUsersPage: React.FC = () => {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<'ALL' | 'STUDENTS' | 'ADMINS' | 'WITH_DEVICES' | 'NO_COLLEGE'>('ALL');
+  const [filterTab, setFilterTab] = useState<'ALL' | 'STUDENTS' | 'ADMINS' | 'WITH_DEVICES' | 'NO_COLLEGE' | 'SUSPENDED'>('ALL');
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
@@ -137,27 +137,42 @@ export const AdminUsersPage: React.FC = () => {
   }, [fetchUsers]);
 
   const toggleUserStatus = async (targetUser: any) => {
-    if (targetUser.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    if (targetUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) {
       alert('Cannot deactivate the root Super Admin account.');
       return;
     }
 
     const newStatus = !targetUser.is_active;
+    const confirmMsg = newStatus
+      ? `Re-activate account for "${targetUser.full_name || targetUser.email}"?\nThey will be able to log in normally.`
+      : `Are you sure you want to DISABLE "${targetUser.full_name || targetUser.email}"?\n\nThey will be BLOCKED from logging in and accessing CampusMate.`;
+
+    if (!confirm(confirmMsg)) return;
+
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: newStatus } as any)
-        .eq('id', targetUser.id);
+      const { error: rpcErr } = await supabase.rpc('admin_toggle_user_active_status', {
+        p_target_user_id: targetUser.id,
+        p_is_active: newStatus,
+        p_reason: newStatus ? 'Re-activated by administrator' : 'Suspended by administrator',
+      });
 
-      if (error) throw error;
+      if (rpcErr) {
+        console.warn('RPC toggle failed, using direct table update fallback:', rpcErr.message);
+        const { error } = await supabase
+          .from('profiles')
+          .update({ is_active: newStatus, updated_at: new Date().toISOString() } as any)
+          .eq('id', targetUser.id);
 
-      await supabase.from('admin_logs').insert({
-        admin_id: user!.id,
-        action: newStatus ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
-        target_table: 'profiles',
-        target_id: targetUser.id,
-        details: { email: targetUser.email, is_active: newStatus },
-      } as any);
+        if (error) throw error;
+
+        await supabase.from('admin_logs').insert({
+          admin_id: user!.id,
+          action: newStatus ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+          entity_type: 'USER',
+          entity_id: targetUser.id,
+          details: { email: targetUser.email, is_active: newStatus },
+        } as any);
+      }
 
       setUsersList((prev) =>
         prev.map((u) => (u.id === targetUser.id ? { ...u, is_active: newStatus } : u))
@@ -211,6 +226,7 @@ export const AdminUsersPage: React.FC = () => {
   const totalAdmins = usersList.filter((u) => u.role_name === 'ADMIN' || u.role_name === 'SUPER_ADMIN').length;
   const totalWithDevices = usersList.filter((u) => (u.device_count || 0) > 0).length;
   const pendingCollege = usersList.filter((u) => !u.college_name).length;
+  const totalSuspended = usersList.filter((u) => u.is_active === false).length;
 
   const filteredUsers = usersList.filter((u) => {
     // 1. Search Query filter across all student attributes
@@ -234,6 +250,7 @@ export const AdminUsersPage: React.FC = () => {
     if (filterTab === 'ADMINS') return roleName === 'ADMIN' || roleName === 'SUPER_ADMIN';
     if (filterTab === 'WITH_DEVICES') return deviceCount > 0;
     if (filterTab === 'NO_COLLEGE') return !u.college_name;
+    if (filterTab === 'SUSPENDED') return u.is_active === false;
 
     return true;
   });
@@ -360,6 +377,7 @@ export const AdminUsersPage: React.FC = () => {
             { id: 'ADMINS', label: `Admins (${totalAdmins})` },
             { id: 'WITH_DEVICES', label: `📲 Push Active (${totalWithDevices})` },
             { id: 'NO_COLLEGE', label: `⚠️ No College (${pendingCollege})` },
+            { id: 'SUSPENDED', label: `🚫 Suspended (${totalSuspended})` },
           ].map((tab) => (
             <button
               key={tab.id}

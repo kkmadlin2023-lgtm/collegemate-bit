@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   Calendar,
@@ -15,9 +15,13 @@ import {
   School,
   X,
   MessageSquare,
+  User,
+  UserCog,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
+import { ThemeToggle } from '../common/ThemeToggle';
+import { EditProfileModal } from '../profile/EditProfileModal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -25,7 +29,8 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { isAdmin, isSuperAdmin } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin } = useAuth();
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const studentNavItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -148,12 +153,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            CampusMate Platform
-          </p>
+        {/* Sidebar Footer: Profile Card & Theme Selector */}
+        <div className="p-3.5 border-t border-slate-100 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
+          {/* User Profile Card button */}
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="w-full flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-500/50 hover:bg-indigo-50/30 dark:hover:bg-slate-800 transition-all text-left group shadow-sm"
+            title="Edit Your Profile"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden flex-shrink-0">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="User" className="w-full h-full object-cover" />
+                ) : (
+                  profile?.full_name?.charAt(0) || user?.email?.charAt(0) || <User className="w-4 h-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                  {profile?.full_name || user?.email?.split('@')[0] || 'Student'}
+                </p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  {profile?.college_name || 'Edit Profile'}
+                </p>
+              </div>
+            </div>
+            <UserCog className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex-shrink-0 ml-1" />
+          </button>
+
+          {/* Theme Selector segmented control */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Theme</span>
+            </div>
+            <ThemeToggle variant="segmented" />
+          </div>
         </div>
       </aside>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </>
   );
 };
