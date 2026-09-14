@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
@@ -6,7 +6,9 @@ import { Button } from '../../components/common/Button';
 import { ImageUploader } from '../../components/common/ImageUploader';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { showLocalDeviceNotification } from '../../lib/firebase';
 import type { Database, ItemType } from '../../types/database.types';
+import { School } from 'lucide-react';
 
 type Category = Database['public']['Tables']['categories']['Row'];
 
@@ -23,34 +25,49 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
   onSuccess,
   defaultType = 'LOST',
 }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [itemType, setItemType] = useState<ItemType>(defaultType);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
+  const [collegeName, setCollegeName] = useState(profile?.college_name || '');
   const [currentLocation, setCurrentLocation] = useState('Campus Security Office');
   const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [rewardOrContact, setRewardOrContact] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [colleges, setColleges] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setItemType(defaultType);
-  }, [defaultType, isOpen]);
+    if (profile?.college_name) {
+      setCollegeName(profile.college_name);
+    }
+  }, [defaultType, isOpen, profile?.college_name]);
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      const { data } = await supabase
+    const fetchData = async () => {
+      // Fetch categories
+      const { data: catData } = await supabase
         .from('categories')
         .select('*')
         .eq('type', 'LOST_FOUND')
         .eq('is_active', true);
-      if (data) setCategories(data);
+      if (catData) setCategories(catData);
+
+      // Fetch distinct colleges for dropdown suggestion
+      const { data: collegeData } = await supabase
+        .from('colleges')
+        .select('name')
+        .eq('is_active', true);
+      if (collegeData) {
+        setColleges(collegeData.map((c) => c.name));
+      }
     };
-    fetchCategories();
+    fetchData();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,6 +77,8 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
       setError('Title, description, and location are required.');
       return;
     }
+
+    const assignedCollege = collegeName.trim() || profile?.college_name || 'Bannari Amman Institute of Technology (BIT)';
 
     setLoading(true);
     setError(null);
@@ -73,14 +92,34 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
           title: title.trim(),
           description: description.trim(),
           last_seen_location: location.trim(),
+          college_name: assignedCollege,
           lost_date: isoDate,
           image_urls: imageUrls,
           reward_offered: rewardOrContact.trim() || null,
           contact_info: user.email || null,
           category_id: categoryId || null,
-          status: 'PENDING',
+          status: 'APPROVED', // Immediately visible to campus
         } as any);
+
         if (insertError) throw insertError;
+
+        // In-app notification for the user
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        await supabase.from('notifications').insert({
+          user_id: user.id,
+          title: `🔍 Lost Item Listed: ${title.trim()}`,
+          body: `Your lost item has been published to ${assignedCollege}. Other students can view and contact you.`,
+          type: 'LOST_FOUND_ALERT',
+          data: { type: 'LOST', college: assignedCollege },
+          expires_at: expiresAt.toISOString(),
+        } as any);
+
+        showLocalDeviceNotification(
+          '🔍 Lost Item Listed Successfully!',
+          `Your report for "${title.trim()}" is now live on the ${assignedCollege} campus board.`
+        );
       } else {
         const { error: insertError } = await supabase.from('found_items').insert({
           user_id: user.id,
@@ -88,13 +127,32 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
           description: description.trim(),
           found_location: location.trim(),
           current_location: currentLocation.trim() || 'Campus Security Office',
+          college_name: assignedCollege,
           found_date: isoDate,
           image_urls: imageUrls,
           handover_notes: rewardOrContact.trim() || null,
           category_id: categoryId || null,
-          status: 'PENDING',
+          status: 'APPROVED', // Immediately visible to campus
         } as any);
+
         if (insertError) throw insertError;
+
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        await supabase.from('notifications').insert({
+          user_id: user.id,
+          title: `🎉 Found Item Deposited: ${title.trim()}`,
+          body: `Your found item report has been published to ${assignedCollege} (Deposited at: ${currentLocation.trim()}).`,
+          type: 'LOST_FOUND_ALERT',
+          data: { type: 'FOUND', college: assignedCollege },
+          expires_at: expiresAt.toISOString(),
+        } as any);
+
+        showLocalDeviceNotification(
+          '🎉 Found Item Report Published!',
+          `Item "${title.trim()}" is now visible to students looking for their misplaced belongings.`
+        );
       }
 
       onSuccess();
@@ -105,7 +163,8 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
       setRewardOrContact('');
       setImageUrls([]);
     } catch (err: any) {
-      setError(err.message || 'Failed to submit report');
+      console.error('Error submitting report:', err);
+      setError(err.message || 'Failed to submit report.');
     } finally {
       setLoading(false);
     }
@@ -121,9 +180,9 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={itemType === 'LOST' ? 'Report Lost Belonging' : 'Report Found Item'}
-      description="Listings are reviewed by campus moderators before being published publicly."
+      description="Published immediately to your campus directory so classmates and campus staff can help recover it."
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 text-left">
         {error && (
           <div className="p-3 text-xs bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-800">
             {error}
@@ -163,6 +222,30 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
           onChange={(e) => setTitle(e.target.value)}
           required
         />
+
+        {/* College Name Selection */}
+        <div className="space-y-1.5 text-left">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <School className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> College / University Campus *
+          </label>
+          <input
+            type="text"
+            list="college-list"
+            required
+            placeholder="e.g. Bannari Amman Institute of Technology (BIT)"
+            value={collegeName}
+            onChange={(e) => setCollegeName(e.target.value)}
+            className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <datalist id="college-list">
+            {colleges.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <p className="text-[11px] text-slate-400">
+            This item will be tagged with this college so campus peers can identify it quickly.
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select
@@ -234,7 +317,7 @@ export const ReportItemModal: React.FC<ReportItemModalProps> = ({
             Cancel
           </Button>
           <Button type="submit" isLoading={loading} variant={itemType === 'LOST' ? 'danger' : 'success'}>
-            Submit Report
+            Publish Live Report
           </Button>
         </div>
       </form>

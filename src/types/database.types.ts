@@ -291,6 +291,7 @@ export interface Database {
           id: string;
           user_id: string;
           category_id: string | null;
+          college_name: string | null;
           title: string;
           description: string;
           last_seen_location: string;
@@ -308,6 +309,7 @@ export interface Database {
           id?: string;
           user_id: string;
           category_id?: string | null;
+          college_name?: string | null;
           title: string;
           description: string;
           last_seen_location: string;
@@ -325,6 +327,7 @@ export interface Database {
           id?: string;
           user_id?: string;
           category_id?: string | null;
+          college_name?: string | null;
           title?: string;
           description?: string;
           last_seen_location?: string;
@@ -345,6 +348,7 @@ export interface Database {
           id: string;
           user_id: string;
           category_id: string | null;
+          college_name: string | null;
           title: string;
           description: string;
           found_location: string;
@@ -362,6 +366,7 @@ export interface Database {
           id?: string;
           user_id: string;
           category_id?: string | null;
+          college_name?: string | null;
           title: string;
           description: string;
           found_location: string;
@@ -379,6 +384,7 @@ export interface Database {
           id?: string;
           user_id?: string;
           category_id?: string | null;
+          college_name?: string | null;
           title?: string;
           description?: string;
           found_location?: string;

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Clock, Megaphone, X, Smartphone } from 'lucide-react';
+import { Bell, Check, Clock, Megaphone, X, Smartphone, Zap } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { registerPushNotificationToken, getNotificationPermissionState, showLocalDeviceNotification } from '../../lib/firebase';
 import type { Database } from '../../types/database.types';
 import { Badge } from '../common/Badge';
 import { formatDistanceToNow } from 'date-fns';
+import { NotificationSelfCheckModal } from './NotificationSelfCheckModal';
 
 type Notification = Database['public']['Tables']['notifications']['Row'];
 
@@ -26,6 +27,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const [pushStatus, setPushStatus] = useState<NotificationPermission>('default');
   const [enablingPush, setEnablingPush] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [isSelfCheckOpen, setIsSelfCheckOpen] = useState(false);
 
   useEffect(() => {
     setPushStatus(getNotificationPermissionState());
@@ -222,7 +224,28 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                   {pushMessage}
                 </p>
               )}
+
+              {/* 1-Click Verification & Self-Check Button */}
+              <div className="mt-2.5 pt-2 border-t border-indigo-100/80 dark:border-indigo-900/50 flex items-center justify-between">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                  Delivery Diagnostics
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSelfCheckOpen(true)}
+                  className="inline-flex items-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 shadow-2xs transition-colors"
+                >
+                  <Zap className="w-3 h-3 mr-1 text-amber-500" />
+                  Self-Check Notifications
+                </button>
+              </div>
             </div>
+
+            {/* Self Check Modal */}
+            <NotificationSelfCheckModal
+              isOpen={isSelfCheckOpen}
+              onClose={() => setIsSelfCheckOpen(false)}
+            />
             {loading ? (
               <div className="space-y-3">
                 <div className="h-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
