@@ -55,38 +55,45 @@ export const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
   useEffect(() => {
     if (!targetUser || !isOpen) return;
 
+    // Use pre-fetched devices if available
+    if (targetUser.devices && Array.isArray(targetUser.devices)) {
+      setDeviceTokens(targetUser.devices);
+    }
+
     const fetchUserDetails = async () => {
       setLoadingDetails(true);
       try {
-        // 1. Fetch Connected Device Tokens
-        const { data: tokens } = await supabase
-          .from('notification_tokens')
-          .select('*')
-          .eq('user_id', targetUser.id)
-          .order('created_at', { ascending: false });
-        if (tokens) setDeviceTokens(tokens);
+        // 1. Fetch Connected Device Tokens if not already present
+        if (!targetUser.devices || targetUser.devices.length === 0) {
+          const { data: tokens } = await supabase
+            .from('notification_tokens')
+            .select('*')
+            .eq('user_id', targetUser.id)
+            .order('created_at', { ascending: false });
+          if (tokens) setDeviceTokens(tokens);
+        }
 
-        // 2. Fetch Activity Counts
+        // 2. Fetch Activity Counts with safety
         const [
-          { count: schedCount },
-          { count: remCount },
-          { count: lostCount },
-          { count: foundCount },
-          { count: claimsCount },
-        ] = await Promise.all([
+          schedRes,
+          remRes,
+          lostRes,
+          foundRes,
+          claimsRes,
+        ] = await Promise.allSettled([
           supabase.from('schedules').select('*', { count: 'exact', head: true }).eq('user_id', targetUser.id),
           supabase.from('reminders').select('*', { count: 'exact', head: true }).eq('user_id', targetUser.id),
           supabase.from('lost_items').select('*', { count: 'exact', head: true }).eq('user_id', targetUser.id),
           supabase.from('found_items').select('*', { count: 'exact', head: true }).eq('user_id', targetUser.id),
-          supabase.from('item_claims').select('*', { count: 'exact', head: true }).eq('claimant_id', targetUser.id),
+          supabase.from('claims').select('*', { count: 'exact', head: true }).eq('claimant_id', targetUser.id),
         ]);
 
         setActivityStats({
-          schedules: schedCount || 0,
-          reminders: remCount || 0,
-          lostItems: lostCount || 0,
-          foundItems: foundCount || 0,
-          claims: claimsCount || 0,
+          schedules: schedRes.status === 'fulfilled' ? schedRes.value.count || 0 : 0,
+          reminders: remRes.status === 'fulfilled' ? remRes.value.count || 0 : 0,
+          lostItems: lostRes.status === 'fulfilled' ? lostRes.value.count || 0 : 0,
+          foundItems: foundRes.status === 'fulfilled' ? foundRes.value.count || 0 : 0,
+          claims: claimsRes.status === 'fulfilled' ? claimsRes.value.count || 0 : 0,
         });
       } catch (err) {
         console.error('Error fetching user details:', err);
