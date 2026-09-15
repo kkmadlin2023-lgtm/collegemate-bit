@@ -6,6 +6,7 @@ import { Button } from '../../components/common/Button';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database, PriorityLevel, RecurrenceType } from '../../types/database.types';
+import { generateGoogleCalendarUrlForReminder, openGoogleCalendarUrl } from '../../lib/googleCalendar';
 
 type Reminder = Database['public']['Tables']['reminders']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -33,6 +34,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
   const [notifyBefore, setNotifyBefore] = useState('15');
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [syncToGCal, setSyncToGCal] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +120,17 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
         if (insertError) throw insertError;
       }
 
+      // Automatically sync/assign to Google Calendar if enabled
+      if (syncToGCal) {
+        const gcalUrl = generateGoogleCalendarUrlForReminder({
+          title: title.trim(),
+          description: description.trim(),
+          due_date: fullDueDateTime,
+          priority,
+        });
+        openGoogleCalendarUrl(gcalUrl);
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -143,7 +156,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
   ];
 
   const categoryOptions = [
-    { value: '', label: 'Select Category (Optional)' },
+    { value: '', label: 'Uncategorized' },
     ...categories.map((c) => ({ value: c.id, label: c.name })),
   ];
 
@@ -151,19 +164,18 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={reminderToEdit ? 'Edit Task / Reminder' : 'Create Task / Reminder'}
-      description="Stay on top of coursework assignments, exams, and personal errands."
+      title={reminderToEdit ? 'Edit Reminder & Task' : 'Create New Reminder'}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="p-3 text-xs bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 rounded-xl border border-rose-200 dark:border-rose-800">
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-xl text-xs">
             {error}
           </div>
         )}
 
         <Input
           label="Reminder Title *"
-          placeholder="e.g. Submit Physics Lab Report 3"
+          placeholder="e.g. Submit Web Dev Assignment / Pay Exam Fee"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
@@ -171,15 +183,15 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
+            label="Due Date *"
             type="date"
-            label="Due Date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
             required
           />
           <Input
+            label="Due Time *"
             type="time"
-            label="Due Time"
             value={dueTime}
             onChange={(e) => setDueTime(e.target.value)}
             required
@@ -194,7 +206,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
             options={priorityOptions}
           />
           <Select
-            label="Notification Alarm"
+            label="Push Notification Alert"
             value={notifyBefore}
             onChange={(e) => setNotifyBefore(e.target.value)}
             options={notificationOptions}
@@ -219,6 +231,22 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
             className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
           />
         </div>
+
+        {/* Google Calendar Auto-assign Checkbox */}
+        <label className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 cursor-pointer text-left">
+          <input
+            type="checkbox"
+            checked={syncToGCal}
+            onChange={(e) => setSyncToGCal(e.target.checked)}
+            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+          />
+          <div className="text-xs">
+            <span className="font-bold text-slate-900 dark:text-white">📅 Automatically assign in Google Calendar</span>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Opens Google Calendar with pre-filled reminder deadline & alerts.
+            </p>
+          </div>
+        </label>
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button type="button" variant="ghost" onClick={onClose}>

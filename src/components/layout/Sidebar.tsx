@@ -13,6 +13,7 @@ import {
   Settings,
   Sparkles,
   School,
+  Ticket,
   X,
   MessageSquare,
   User,
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const studentNavItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/events', label: 'Events & Fests', icon: Ticket },
     { to: '/schedule', label: 'Schedule Manager', icon: Calendar },
     { to: '/reminders', label: 'Reminders & Tasks', icon: CheckSquare },
     { to: '/lost-found', label: 'Lost & Found Hub', icon: Search },
@@ -42,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const adminNavItems = [
     { to: '/admin/dashboard', label: 'Admin Overview', icon: Shield },
+    { to: '/admin/events', label: 'Event Moderation', icon: Ticket },
     { to: '/admin/users', label: 'User Directory', icon: Users },
     { to: '/admin/colleges', label: 'Campuses & Merge', icon: School },
     { to: '/admin/lost-found', label: 'Lost & Found Moderation', icon: Search },

@@ -9,11 +9,16 @@ import {
   BookOpen,
   AlertTriangle,
   Zap,
+  CalendarPlus,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database } from '../../types/database.types';
 import { formatTime } from '../../lib/utils';
+import {
+  generateGoogleCalendarUrlForSchedule,
+  generateGoogleCalendarUrlForReminder,
+} from '../../lib/googleCalendar';
 import {
   format,
   startOfMonth,
@@ -46,6 +51,8 @@ interface CalendarEvent {
   priority?: string;
   location?: string;
   instructor?: string;
+  rawSchedule?: Schedule;
+  rawReminder?: Reminder;
 }
 
 export const FullCalendarView: React.FC = () => {
@@ -99,6 +106,7 @@ export const FullCalendarView: React.FC = () => {
           color: s.color || '#4f46e5',
           location: s.location || undefined,
           instructor: s.instructor || undefined,
+          rawSchedule: s,
         });
       });
 
@@ -118,6 +126,7 @@ export const FullCalendarView: React.FC = () => {
           time: format(parseISO(r.due_date), 'HH:mm'),
           color: priorityColors[r.priority] || '#6366f1',
           priority: r.priority,
+          rawReminder: r,
         });
       });
 
@@ -239,13 +248,26 @@ export const FullCalendarView: React.FC = () => {
                       </div>
                       <div className="space-y-2">
                         {selectedDayEvents.filter((e) => e.type === 'schedule').map((event) => (
-                          <div key={event.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800" style={{ borderLeftColor: event.color, borderLeftWidth: '3px' }}>
-                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{event.title}</p>
-                            <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                              {event.time && <span className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400"><Clock className="w-3 h-3" />{formatTime(event.time)}</span>}
-                              {event.location && <span className="flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{event.location}</span>}
+                          <div key={event.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2" style={{ borderLeftColor: event.color, borderLeftWidth: '3px' }}>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{event.title}</p>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                {event.time && <span className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400"><Clock className="w-3 h-3" />{formatTime(event.time)}</span>}
+                                {event.location && <span className="flex items-center gap-1 text-[11px] text-slate-500"><MapPin className="w-3 h-3" />{event.location}</span>}
+                              </div>
+                              {event.instructor && <p className="text-[11px] text-slate-400 mt-0.5">👤 {event.instructor}</p>}
                             </div>
-                            {event.instructor && <p className="text-[11px] text-slate-400 mt-0.5">👤 {event.instructor}</p>}
+                            {event.rawSchedule && (
+                              <a
+                                href={generateGoogleCalendarUrlForSchedule(event.rawSchedule)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Add class to Google Calendar"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors flex-shrink-0"
+                              >
+                                <CalendarPlus className="w-3.5 h-3.5" />
+                              </a>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -259,14 +281,27 @@ export const FullCalendarView: React.FC = () => {
                       </div>
                       <div className="space-y-2">
                         {selectedDayEvents.filter((e) => e.type === 'reminder').map((event) => (
-                          <div key={event.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800" style={{ borderLeftColor: event.color, borderLeftWidth: '3px' }}>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{event.title}</p>
-                              {event.priority === 'URGENT' && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />}
-                              {event.priority === 'HIGH' && <Zap className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />}
+                          <div key={event.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2" style={{ borderLeftColor: event.color, borderLeftWidth: '3px' }}>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{event.title}</p>
+                                {event.priority === 'URGENT' && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />}
+                                {event.priority === 'HIGH' && <Zap className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />}
+                              </div>
+                              {event.time && <span className="flex items-center gap-1 text-[11px] font-semibold mt-0.5" style={{ color: event.color }}><Clock className="w-3 h-3" />Due at {event.time}</span>}
+                              {event.priority && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-1 inline-block" style={{ backgroundColor: event.color + '20', color: event.color }}>{event.priority}</span>}
                             </div>
-                            {event.time && <span className="flex items-center gap-1 text-[11px] font-semibold mt-0.5" style={{ color: event.color }}><Clock className="w-3 h-3" />Due at {event.time}</span>}
-                            {event.priority && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-1 inline-block" style={{ backgroundColor: event.color + '20', color: event.color }}>{event.priority}</span>}
+                            {event.rawReminder && (
+                              <a
+                                href={generateGoogleCalendarUrlForReminder(event.rawReminder)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Add task to Google Calendar"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/50 transition-colors flex-shrink-0"
+                              >
+                                <CalendarPlus className="w-3.5 h-3.5" />
+                              </a>
+                            )}
                           </div>
                         ))}
                       </div>

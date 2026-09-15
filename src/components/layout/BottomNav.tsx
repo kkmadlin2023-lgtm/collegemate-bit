@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Calendar, CheckSquare, Search, LayoutDashboard, Shield } from 'lucide-react';
+import { Calendar, CheckSquare, Search, LayoutDashboard, Shield, Ticket } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
 
@@ -9,9 +9,10 @@ export const BottomNav: React.FC = () => {
 
   const items = [
     { to: '/dashboard', label: 'Home', icon: LayoutDashboard },
+    { to: '/events', label: 'Events', icon: Ticket },
     { to: '/schedule', label: 'Schedule', icon: Calendar },
-    { to: '/reminders', label: 'Reminders', icon: CheckSquare },
-    { to: '/lost-found', label: 'Lost & Found', icon: Search },
+    { to: '/reminders', label: 'Tasks', icon: CheckSquare },
+    { to: '/lost-found', label: 'Lost', icon: Search },
     ...(isAdmin ? [{ to: '/admin/dashboard', label: 'Admin', icon: Shield }] : []),
   ];
 

@@ -6,6 +6,7 @@ import { Button } from '../../components/common/Button';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database, RecurrenceType } from '../../types/database.types';
+import { generateGoogleCalendarUrlForSchedule, openGoogleCalendarUrl } from '../../lib/googleCalendar';
 
 type Schedule = Database['public']['Tables']['schedules']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -35,6 +36,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   const [color, setColor] = useState('#4f46e5');
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [syncToGCal, setSyncToGCal] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,6 +131,20 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         if (insertError) throw insertError;
       }
 
+      // Automatically sync weekly schedule to Google Calendar if enabled
+      if (syncToGCal) {
+        const gcalUrl = generateGoogleCalendarUrlForSchedule({
+          title: title.trim(),
+          description: description.trim(),
+          location: location.trim(),
+          instructor: instructor.trim(),
+          day_of_week: parseInt(dayOfWeek, 10),
+          start_time: startTime,
+          end_time: endTime,
+        });
+        openGoogleCalendarUrl(gcalUrl);
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -149,10 +165,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   ];
 
   const recurrenceOptions = [
-    { value: 'WEEKLY', label: 'Every Week' },
-    { value: 'BIWEEKLY', label: 'Every 2 Weeks' },
-    { value: 'DAILY', label: 'Daily (Mon-Fri)' },
-    { value: 'NONE', label: 'One-Time Only' },
+    { value: 'WEEKLY', label: 'Repeats Weekly' },
+    { value: 'BIWEEKLY', label: 'Repeats Bi-Weekly' },
+    { value: 'DAILY', label: 'Repeats Daily' },
+    { value: 'NONE', label: 'One Time Only' },
   ];
 
   const categoryOptions = [
@@ -160,14 +176,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     ...categories.map((c) => ({ value: c.id, label: c.name })),
   ];
 
-  const presetColors = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444'];
+  const presetColors = [
+    '#4f46e5', // Indigo
+    '#2563eb', // Blue
+    '#059669', // Emerald
+    '#d97706', // Amber
+    '#dc2626', // Red
+    '#7c3aed', // Purple
+    '#db2777', // Pink
+  ];
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={scheduleToEdit ? 'Edit Class / Schedule' : 'Add Class / Schedule'}
-      description="Keep your timetable organized with room locations and recurrence."
+      title={scheduleToEdit ? 'Edit Class Schedule' : 'Add Class / Lab Schedule'}
+      description="Add recurring lecture slots and campus commitments."
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
@@ -177,8 +201,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         )}
 
         <Input
-          label="Class / Course Title *"
-          placeholder="e.g. CS201 - Data Structures & Algorithms"
+          label="Subject / Activity Title *"
+          placeholder="e.g. Data Structures & Algorithms"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
@@ -187,13 +211,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Location / Room"
-            placeholder="e.g. Hall B-102 or Zoom"
+            placeholder="e.g. CS Lab 204 / Hall B"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
           />
           <Input
-            label="Instructor / Lecturer"
-            placeholder="e.g. Dr. Alan Turing"
+            label="Faculty / Instructor"
+            placeholder="e.g. Dr. Ramesh Kumar"
             value={instructor}
             onChange={(e) => setInstructor(e.target.value)}
           />
@@ -201,7 +225,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Select
-            label="Day of Week"
+            label="Day of the Week"
             value={dayOfWeek}
             onChange={(e) => setDayOfWeek(e.target.value)}
             options={dayOptions}
@@ -237,6 +261,19 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           />
         </div>
 
+        <div className="space-y-1.5 text-left">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+            Description / Syllabus Notes
+          </label>
+          <textarea
+            rows={2}
+            placeholder="Topic overview, reference links, etc."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+          />
+        </div>
+
         <div>
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
             Color Tag
@@ -255,6 +292,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Google Calendar Auto-assign Checkbox */}
+        <label className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 cursor-pointer text-left">
+          <input
+            type="checkbox"
+            checked={syncToGCal}
+            onChange={(e) => setSyncToGCal(e.target.checked)}
+            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+          />
+          <div className="text-xs">
+            <span className="font-bold text-slate-900 dark:text-white">📅 Automatically assign in Google Calendar</span>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Syncs weekly repeating class schedule into your Google Calendar.
+            </p>
+          </div>
+        </label>
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button type="button" variant="ghost" onClick={onClose}>

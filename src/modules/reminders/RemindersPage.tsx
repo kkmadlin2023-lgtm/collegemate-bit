@@ -8,6 +8,7 @@ import {
   Plus,
   Trash2,
   CheckSquare,
+  Calendar,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +20,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { ReminderModal } from './ReminderModal';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 import { FullCalendarView } from '../../components/calendar/FullCalendarView';
+import { generateGoogleCalendarUrlForReminder, openGoogleCalendarUrl } from '../../lib/googleCalendar';
 
 type Reminder = Database['public']['Tables']['reminders']['Row'];
 
@@ -304,16 +306,28 @@ export const RemindersPage: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => {
+                          const url = generateGoogleCalendarUrlForReminder(item);
+                          openGoogleCalendarUrl(url);
+                        }}
+                        className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                        title="Add to Google Calendar"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
                           setReminderToEdit(item);
                           setIsModalOpen(true);
                         }}
                         className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Edit Reminder"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(item.id)}
                         className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                        title="Delete Reminder"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

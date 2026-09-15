@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ArrowRight,
   UserCog,
+  Ticket,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +22,7 @@ import { Card } from '../../components/common/Card';
 import { ScheduleModal } from '../schedule/ScheduleModal';
 import { ReminderModal } from '../reminders/ReminderModal';
 import { ReportItemModal } from '../lost-found/ReportItemModal';
+import { CreateEventModal } from '../events/CreateEventModal';
 import { EditProfileModal } from '../../components/profile/EditProfileModal';
 import { formatTime, getDayName } from '../../lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -37,12 +39,14 @@ export const StudentDashboard: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [lostItems, setLostItems] = useState<LostItem[]>([]);
   const [foundItems, setFoundItems] = useState<FoundItem[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal triggers
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [reportType, setReportType] = useState<'LOST' | 'FOUND'>('LOST');
 
@@ -70,6 +74,15 @@ export const StudentDashboard: React.FC = () => {
         .limit(5);
 
       if (reminderData) setReminders(reminderData);
+
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('*')
+        .gte('event_date', new Date().toISOString().split('T')[0])
+        .order('event_date', { ascending: true })
+        .limit(3);
+
+      if (eventData) setEvents(eventData);
 
       const { data: lostData } = await supabase
         .from('lost_items')
@@ -163,6 +176,14 @@ export const StudentDashboard: React.FC = () => {
               onClick={() => setIsReminderModalOpen(true)}
             >
               Add Reminder
+            </Button>
+            <Button
+              size="sm"
+              className="bg-purple-500/80 text-white hover:bg-purple-500 border-none shadow-none"
+              leftIcon={<Ticket className="w-4 h-4" />}
+              onClick={() => setIsEventModalOpen(true)}
+            >
+              Post Event
             </Button>
             <Button
               size="sm"
@@ -347,6 +368,71 @@ export const StudentDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Upcoming Campus Events & Fests */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Ticket className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              Upcoming Campus Events & Fests
+            </h3>
+          </div>
+          <Link
+            to="/events"
+            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 flex items-center gap-1"
+          >
+            Explore All Events <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {events.length === 0 ? (
+          <Card className="p-6 text-center border-dashed border-slate-300 dark:border-slate-800">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No upcoming events posted yet for your campus. Be the first to host one!
+            </p>
+            <div className="mt-3">
+              <Button size="sm" onClick={() => setIsEventModalOpen(true)}>
+                Post First Event
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {events.map((ev) => (
+              <Card key={ev.id} hoverable className="overflow-hidden p-0 flex flex-col justify-between">
+                {ev.image_url ? (
+                  <div className="h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                    <img
+                      src={ev.image_url}
+                      alt={ev.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-24 bg-gradient-to-r from-purple-600 to-indigo-600 p-3 text-white flex flex-col justify-end">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full w-fit">
+                      {ev.category}
+                    </span>
+                  </div>
+                )}
+                <div className="p-4 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{ev.title}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{ev.description}</p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                      <Calendar className="w-3.5 h-3.5" /> {ev.event_date}
+                    </span>
+                    <span className="truncate max-w-[120px]">{ev.location}</span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Lost & Found Community Feed Preview */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -431,6 +517,11 @@ export const StudentDashboard: React.FC = () => {
         onClose={() => setIsReportModalOpen(false)}
         onSuccess={fetchDashboardData}
         defaultType={reportType}
+      />
+      <CreateEventModal
+        isOpen={isEventModalOpen}
+        onClose={() => setIsEventModalOpen(false)}
+        onSuccess={fetchDashboardData}
       />
       <EditProfileModal
         isOpen={isProfileModalOpen}
