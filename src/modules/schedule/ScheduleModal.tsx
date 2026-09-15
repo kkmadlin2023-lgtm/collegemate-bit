@@ -6,7 +6,8 @@ import { Button } from '../../components/common/Button';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database, RecurrenceType } from '../../types/database.types';
-import { generateGoogleCalendarUrlForSchedule, openGoogleCalendarUrl } from '../../lib/googleCalendar';
+import { createGoogleCalendarEventDirect, updateGoogleCalendarEventDirect, isGoogleCalendarAutoSyncEnabled } from '../../lib/googleCalendarApi';
+import { showLocalDeviceNotification } from '../../lib/firebase';
 
 type Schedule = Database['public']['Tables']['schedules']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -94,6 +95,49 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setError(null);
 
     try {
+      let savedGoogleEventId: string | null = (scheduleToEdit as any)?.google_event_id || null;
+
+      // Direct Google Calendar sync in background without page redirect
+      if (syncToGCal && isGoogleCalendarAutoSyncEnabled()) {
+        try {
+          const now = new Date();
+          const currentDay = now.getDay();
+          const targetDay = parseInt(dayOfWeek, 10);
+          let daysUntil = (targetDay - currentDay + 7) % 7;
+          if (daysUntil === 0) daysUntil = 7;
+
+          const targetDate = new Date();
+          targetDate.setDate(now.getDate() + daysUntil);
+
+          const [sH, sM] = startTime.split(':').map(Number);
+          const [eH, eM] = endTime.split(':').map(Number);
+
+          const start = new Date(targetDate);
+          start.setHours(sH, sM, 0, 0);
+
+          const end = new Date(targetDate);
+          end.setHours(eH, eM, 0, 0);
+
+          const calInput = {
+            title: `📚 ${title.trim()}`,
+            description: [description.trim(), instructor ? `Instructor: ${instructor}` : '', 'CampusMate Recurring Class'].filter(Boolean).join('\n'),
+            location: location.trim() || null,
+            startDate: start,
+            endDate: end,
+            recurrenceRule: 'RRULE:FREQ=WEEKLY',
+          };
+
+          if (scheduleToEdit && savedGoogleEventId) {
+            await updateGoogleCalendarEventDirect(savedGoogleEventId, calInput);
+          } else {
+            const { googleEventId } = await createGoogleCalendarEventDirect(calInput);
+            if (googleEventId) savedGoogleEventId = googleEventId;
+          }
+        } catch (calErr) {
+          console.warn('Google Calendar class sync warning:', calErr);
+        }
+      }
+
       if (scheduleToEdit) {
         const { error: updateError } = await supabase
           .from('schedules')
@@ -108,6 +152,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             recurrence,
             color,
             category_id: categoryId || null,
+            google_event_id: savedGoogleEventId,
           } as any)
           .eq('id', scheduleToEdit.id)
           .eq('user_id', user.id);
@@ -126,24 +171,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           recurrence,
           color,
           category_id: categoryId || null,
+          google_event_id: savedGoogleEventId,
         } as any);
 
         if (insertError) throw insertError;
       }
 
-      // Automatically sync weekly schedule to Google Calendar if enabled
-      if (syncToGCal) {
-        const gcalUrl = generateGoogleCalendarUrlForSchedule({
-          title: title.trim(),
-          description: description.trim(),
-          location: location.trim(),
-          instructor: instructor.trim(),
-          day_of_week: parseInt(dayOfWeek, 10),
-          start_time: startTime,
-          end_time: endTime,
-        });
-        openGoogleCalendarUrl(gcalUrl);
-      }
+      showLocalDeviceNotification(
+        `📚 Schedule Saved: ${title.trim()}`,
+        `Class slot configured for every ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][parseInt(dayOfWeek, 10)]}`
+      );
 
       onSuccess();
       onClose();
@@ -293,7 +330,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           </div>
         </div>
 
-        {/* Google Calendar Auto-assign Checkbox */}
+        {/* Direct Background Google Calendar Auto-assign Checkbox */}
         <label className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 cursor-pointer text-left">
           <input
             type="checkbox"
@@ -302,9 +339,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
           />
           <div className="text-xs">
-            <span className="font-bold text-slate-900 dark:text-white">📅 Automatically assign in Google Calendar</span>
+            <span className="font-bold text-slate-900 dark:text-white">📅 Auto-sync to Google Calendar in Background</span>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Syncs weekly repeating class schedule into your Google Calendar.
+              Directly syncs weekly recurring class timetable without redirecting to a new tab.
             </p>
           </div>
         </label>

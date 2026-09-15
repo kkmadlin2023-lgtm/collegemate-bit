@@ -6,7 +6,8 @@ import { Button } from '../../components/common/Button';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import type { Database, PriorityLevel, RecurrenceType } from '../../types/database.types';
-import { generateGoogleCalendarUrlForReminder, openGoogleCalendarUrl } from '../../lib/googleCalendar';
+import { autoSyncReminderDirect } from '../../lib/googleCalendarApi';
+import { showLocalDeviceNotification } from '../../lib/firebase';
 
 type Reminder = Database['public']['Tables']['reminders']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -89,6 +90,29 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
     const fullDueDateTime = new Date(`${dueDate}T${dueTime}:00`).toISOString();
 
     try {
+      let savedGoogleEventId: string | null = (reminderToEdit as any)?.google_event_id || null;
+
+      // 1. Direct background Google Calendar Sync without page redirection
+      if (syncToGCal) {
+        try {
+          const syncResult = await autoSyncReminderDirect(
+            {
+              title: title.trim(),
+              description: description.trim(),
+              due_date: fullDueDateTime,
+              priority,
+              google_event_id: savedGoogleEventId,
+            },
+            reminderToEdit ? 'UPDATE' : 'CREATE'
+          );
+          if (syncResult) {
+            savedGoogleEventId = syncResult;
+          }
+        } catch (gcalErr) {
+          console.warn('Google Calendar direct sync warning:', gcalErr);
+        }
+      }
+
       if (reminderToEdit) {
         const { error: updateError } = await supabase
           .from('reminders')
@@ -100,6 +124,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
             recurrence,
             notify_before_minutes: parseInt(notifyBefore, 10),
             category_id: categoryId || null,
+            google_event_id: savedGoogleEventId,
           } as any)
           .eq('id', reminderToEdit.id)
           .eq('user_id', user.id);
@@ -115,21 +140,17 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
           recurrence,
           notify_before_minutes: parseInt(notifyBefore, 10),
           category_id: categoryId || null,
+          google_event_id: savedGoogleEventId,
         } as any);
 
         if (insertError) throw insertError;
       }
 
-      // Automatically sync/assign to Google Calendar if enabled
-      if (syncToGCal) {
-        const gcalUrl = generateGoogleCalendarUrlForReminder({
-          title: title.trim(),
-          description: description.trim(),
-          due_date: fullDueDateTime,
-          priority,
-        });
-        openGoogleCalendarUrl(gcalUrl);
-      }
+      // 2. Trigger local notification
+      showLocalDeviceNotification(
+        `⏰ Reminder Set: ${title.trim()}`,
+        `Due on ${new Date(fullDueDateTime).toLocaleDateString()} at ${dueTime}`
+      );
 
       onSuccess();
       onClose();
@@ -232,7 +253,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
           />
         </div>
 
-        {/* Google Calendar Auto-assign Checkbox */}
+        {/* Direct Background Google Calendar Auto-assign Checkbox */}
         <label className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 cursor-pointer text-left">
           <input
             type="checkbox"
@@ -241,9 +262,9 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({
             className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
           />
           <div className="text-xs">
-            <span className="font-bold text-slate-900 dark:text-white">📅 Automatically assign in Google Calendar</span>
+            <span className="font-bold text-slate-900 dark:text-white">📅 Auto-sync to Google Calendar in Background</span>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Opens Google Calendar with pre-filled reminder deadline & alerts.
+              Directly adds this deadline to your Google Calendar without redirecting you. Deleting here will automatically delete from your calendar.
             </p>
           </div>
         </label>

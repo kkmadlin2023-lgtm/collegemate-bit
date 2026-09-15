@@ -9,6 +9,8 @@ import {
   Trash2,
   CheckSquare,
   Calendar,
+  CalendarPlus,
+  Check,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +22,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { ReminderModal } from './ReminderModal';
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
 import { FullCalendarView } from '../../components/calendar/FullCalendarView';
+import { autoSyncReminderDirect, deleteGoogleCalendarEventDirect } from '../../lib/googleCalendarApi';
 import { generateGoogleCalendarUrlForReminder, openGoogleCalendarUrl } from '../../lib/googleCalendar';
 
 type Reminder = Database['public']['Tables']['reminders']['Row'];
@@ -34,6 +37,7 @@ export const RemindersPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [reminderToEdit, setReminderToEdit] = useState<Reminder | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const fetchReminders = async () => {
     if (!user) return;
@@ -81,13 +85,45 @@ export const RemindersPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (reminder: Reminder) => {
     if (!confirm('Are you sure you want to delete this reminder?')) return;
     try {
-      await supabase.from('reminders').delete().eq('id', id).eq('user_id', user!.id);
-      setReminders((prev) => prev.filter((r) => r.id !== id));
+      // 1. Delete from Google Calendar in background if synced
+      if ((reminder as any).google_event_id) {
+        await deleteGoogleCalendarEventDirect((reminder as any).google_event_id);
+      }
+
+      // 2. Delete from Supabase
+      await supabase.from('reminders').delete().eq('id', reminder.id).eq('user_id', user!.id);
+      setReminders((prev) => prev.filter((r) => r.id !== reminder.id));
     } catch (err) {
       console.error('Error deleting reminder:', err);
+    }
+  };
+
+  const handleDirectGCalSync = async (reminder: Reminder) => {
+    setSyncingId(reminder.id);
+    try {
+      const googleEventId = await autoSyncReminderDirect(reminder as any, 'CREATE');
+      if (googleEventId) {
+        await supabase
+          .from('reminders')
+          .update({ google_event_id: googleEventId } as any)
+          .eq('id', reminder.id)
+          .eq('user_id', user!.id);
+
+        setReminders((prev) =>
+          prev.map((r) => (r.id === reminder.id ? { ...r, google_event_id: googleEventId } as any : r))
+        );
+      } else {
+        const url = generateGoogleCalendarUrlForReminder(reminder);
+        openGoogleCalendarUrl(url);
+      }
+    } catch (e) {
+      const url = generateGoogleCalendarUrlForReminder(reminder);
+      openGoogleCalendarUrl(url);
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -127,123 +163,158 @@ export const RemindersPage: React.FC = () => {
             Reminder Manager
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Keep track of assignment deadlines, exams, and personal errands.
+            Keep track of assignment deadlines, exams, and personal errands. Auto-synced to Google Calendar.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          {/* View Toggle */}
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setViewMode('LIST')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 viewMode === 'LIST'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
               List View
             </button>
             <button
               onClick={() => setViewMode('CALENDAR')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${
                 viewMode === 'CALENDAR'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
               }`}
             >
-              📅 Calendar
+              <Calendar className="w-3.5 h-3.5" /> Calendar
             </button>
           </div>
 
           <Button
             size="sm"
-            leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => {
               setReminderToEdit(null);
               setIsModalOpen(true);
             }}
+            leftIcon={<Plus className="w-4 h-4" />}
           >
-            New Reminder
+            Add Task
           </Button>
         </div>
       </div>
 
-      {/* List View Mode */}
-      {viewMode === 'LIST' ? (
+      {viewMode === 'CALENDAR' ? (
+        <FullCalendarView />
+      ) : (
         <>
-          {/* Filter Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-            {/* Status Tabs */}
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Card className="p-4 border-l-4 border-indigo-500">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Tasks</p>
+              <p className="text-2xl font-extrabold text-slate-900 dark:text-white mt-1">
+                {reminders.length}
+              </p>
+            </Card>
+
+            <Card className="p-4 border-l-4 border-amber-500">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pending</p>
+              <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">
+                {reminders.filter((r) => !r.is_completed).length}
+              </p>
+            </Card>
+
+            <Card className="p-4 border-l-4 border-rose-500">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Urgent</p>
+              <p className="text-2xl font-extrabold text-rose-600 dark:text-rose-400 mt-1">
+                {reminders.filter((r) => !r.is_completed && r.priority === 'URGENT').length}
+              </p>
+            </Card>
+
+            <Card className="p-4 border-l-4 border-emerald-500">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Completed</p>
+              <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+                {reminders.filter((r) => r.is_completed).length}
+              </p>
+            </Card>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
               <button
                 onClick={() => setStatusFilter('ACTIVE')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
                   statusFilter === 'ACTIVE'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
                 }`}
               >
-                Active ({reminders.filter((r) => !r.is_completed).length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('COMPLETED')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  statusFilter === 'COMPLETED'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                Completed ({reminders.filter((r) => r.is_completed).length})
+                Active Tasks
               </button>
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
                   statusFilter === 'ALL'
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
                 }`}
               >
                 All
               </button>
+              <button
+                onClick={() => setStatusFilter('COMPLETED')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                  statusFilter === 'COMPLETED'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                Completed
+              </button>
             </div>
 
-            {/* Priority Filter */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Priority:</span>
               <select
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-800 dark:text-slate-200"
+                className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
               >
                 <option value="ALL">All Priorities</option>
-                <option value="URGENT">Urgent</option>
-                <option value="HIGH">High</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="LOW">Low</option>
+                <option value="URGENT">Urgent Only</option>
+                <option value="HIGH">High Priority</option>
+                <option value="MEDIUM">Medium Priority</option>
+                <option value="LOW">Low Priority</option>
               </select>
             </div>
           </div>
 
           {/* Reminders List */}
-          <div className="space-y-3">
-            {loading ? (
-              <div className="space-y-3">
-                <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
-                <div className="h-16 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
-              </div>
-            ) : filteredReminders.length === 0 ? (
-              <EmptyState
-                icon={<CheckSquare className="w-6 h-6" />}
-                title="No Reminders Found"
-                description="All caught up! You have no tasks matching this filter."
-                actionLabel="Add New Reminder"
-                onAction={() => {
-                  setReminderToEdit(null);
-                  setIsModalOpen(true);
-                }}
-              />
-            ) : (
-              filteredReminders.map((item) => {
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
+              ))}
+            </div>
+          ) : filteredReminders.length === 0 ? (
+            <EmptyState
+              icon={<CheckSquare className="w-6 h-6" />}
+              title="No Reminders Found"
+              description={
+                statusFilter === 'COMPLETED'
+                  ? "You haven't completed any reminders yet."
+                  : 'Great job! You have cleared all your tasks and reminders.'
+              }
+              actionLabel="Create Task"
+              onAction={() => {
+                setReminderToEdit(null);
+                setIsModalOpen(true);
+              }}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredReminders.map((item) => {
                 const isOverdue = !item.is_completed && isPast(new Date(item.due_date));
 
                 return (
@@ -299,53 +370,57 @@ export const RemindersPage: React.FC = () => {
                               {item.notify_before_minutes}m before
                             </span>
                           )}
+                          {(item as any).google_event_id && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                              <Check className="w-3 h-3" /> GCal Synced
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => {
-                          const url = generateGoogleCalendarUrlForReminder(item);
-                          openGoogleCalendarUrl(url);
-                        }}
+                        onClick={() => handleDirectGCalSync(item)}
+                        disabled={syncingId === item.id}
                         className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
-                        title="Add to Google Calendar"
+                        title="Sync to Google Calendar in background"
                       >
-                        <Calendar className="w-4 h-4" />
+                        <CalendarPlus className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => {
                           setReminderToEdit(item);
                           setIsModalOpen(true);
                         }}
-                        className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        title="Edit Reminder"
+                        className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Edit"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => handleDelete(item)}
                         className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                        title="Delete Reminder"
+                        title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </Card>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </>
-      ) : (
-        <FullCalendarView />
       )}
 
-      {/* Modal */}
+      {/* Create / Edit Modal */}
       <ReminderModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setReminderToEdit(null);
+        }}
         onSuccess={fetchReminders}
         reminderToEdit={reminderToEdit}
       />

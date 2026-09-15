@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { ScheduleModal } from './ScheduleModal';
 import { formatTime, getDayName, getDayShortName } from '../../lib/utils';
 import { FullCalendarView } from '../../components/calendar/FullCalendarView';
+import { deleteGoogleCalendarEventDirect } from '../../lib/googleCalendarApi';
 
 type Schedule = Database['public']['Tables']['schedules']['Row'];
 type Category = Database['public']['Tables']['categories']['Row'];
@@ -18,33 +19,38 @@ export const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [viewMode, setViewMode] = useState<'WEEK' | 'DAY' | 'CALENDAR'>('WEEK');
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
+  const [viewMode, setViewMode] = useState<'WEEK' | 'DAY' | 'CALENDAR'>('WEEK');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [scheduleToEdit, setScheduleToEdit] = useState<Schedule | null>(null);
 
   const fetchSchedules = async () => {
     if (!user) return;
+    setLoading(true);
     try {
-      const { data: schedData, error } = await supabase
-        .from('schedules')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('start_time', { ascending: true });
+      const [{ data: scheduleData }, { data: catData }] = await Promise.all([
+        supabase
+          .from('schedules')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('start_time', { ascending: true }),
+        supabase
+          .from('categories')
+          .select('*')
+          .eq('type', 'SCHEDULE')
+          .eq('is_active', true),
+      ]);
 
-      if (!error && schedData) setSchedules(schedData);
-
-      const { data: catData } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('type', 'SCHEDULE')
-        .eq('is_active', true);
-
+      if (scheduleData) setSchedules(scheduleData);
       if (catData) setCategories(catData);
     } catch (err) {
       console.error('Error fetching schedules:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -52,11 +58,14 @@ export const SchedulePage: React.FC = () => {
     if (user) fetchSchedules();
   }, [user]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (schedule: Schedule) => {
     if (!confirm('Are you sure you want to remove this class from your schedule?')) return;
     try {
-      await supabase.from('schedules').delete().eq('id', id).eq('user_id', user!.id);
-      setSchedules((prev) => prev.filter((s) => s.id !== id));
+      if ((schedule as any).google_event_id) {
+        await deleteGoogleCalendarEventDirect((schedule as any).google_event_id);
+      }
+      await supabase.from('schedules').delete().eq('id', schedule.id).eq('user_id', user!.id);
+      setSchedules((prev) => prev.filter((s) => s.id !== schedule.id));
     } catch (err) {
       console.error('Error deleting schedule:', err);
     }
@@ -180,7 +189,13 @@ export const SchedulePage: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {filteredSchedules.filter((s) => s.day_of_week === selectedDay).length === 0 ? (
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
+                ))}
+              </div>
+            ) : filteredSchedules.filter((s) => s.day_of_week === selectedDay).length === 0 ? (
               <EmptyState
                 icon={<Calendar className="w-6 h-6" />}
                 title={`No classes on ${getDayName(selectedDay)}`}
@@ -242,7 +257,7 @@ export const SchedulePage: React.FC = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => handleDelete(item)}
                         className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -312,7 +327,7 @@ export const SchedulePage: React.FC = () => {
                             <Edit2 className="w-3 h-3" />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => handleDelete(item)}
                             className="p-1 rounded text-slate-400 hover:text-rose-600"
                           >
                             <Trash2 className="w-3 h-3" />

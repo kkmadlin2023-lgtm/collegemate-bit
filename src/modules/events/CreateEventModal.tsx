@@ -4,12 +4,10 @@ import {
   MapPin,
   Phone,
   Mail,
-  Image,
   School,
   User,
   Link2,
   Sparkles,
-  AlertCircle,
   Check,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -18,7 +16,9 @@ import { Modal } from '../../components/common/Modal';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
-import { generateGoogleCalendarUrlForEvent, openGoogleCalendarUrl } from '../../lib/googleCalendar';
+import { ImageUploader } from '../../components/common/ImageUploader';
+import { autoSyncCampusEventDirect } from '../../lib/googleCalendarApi';
+import { showLocalDeviceNotification } from '../../lib/firebase';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -79,7 +79,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const [organizerName, setOrganizerName] = useState('');
   const [contactMobile, setContactMobile] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [registrationLink, setRegistrationLink] = useState('');
   const [syncToGCal, setSyncToGCal] = useState(true);
 
@@ -105,8 +105,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
     setEventDate(d.toISOString().split('T')[0]);
 
-    // Select default image
-    setImageUrl(PRESET_POSTERS[0].url);
+    // Reset uploaded photos
+    setUploadedImages([PRESET_POSTERS[0].url]);
 
     // Fetch colleges
     const fetchColleges = async () => {
@@ -141,7 +141,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     setError(null);
 
     try {
-      const eventPayload = {
+      const chosenImageUrl = uploadedImages.length > 0 ? uploadedImages[0] : PRESET_POSTERS[0].url;
+
+      const eventPayload: any = {
         user_id: user.id,
         title: title.trim(),
         description: description.trim() || 'Join us for this exciting campus event!',
@@ -150,85 +152,73 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         start_time: startTime,
         end_time: endTime || null,
         location: location.trim(),
-        college_name: collegeName.trim() || profile?.college_name || 'All Campuses',
-        organizer_name: organizerName.trim() || profile?.full_name || 'Student Coordinator',
+        college_name: collegeName.trim() || profile?.college_name || 'General Campus',
+        organizer_name: organizerName.trim() || profile?.full_name || 'Student Organizer',
         contact_mobile: contactMobile.trim(),
         contact_email: contactEmail.trim() || null,
-        image_url: imageUrl.trim() || PRESET_POSTERS[0].url,
+        image_url: chosenImageUrl,
         registration_link: registrationLink.trim() || null,
-        status: 'APPROVED',
       };
 
-      const { data: insertedEvent, error: insertErr } = await supabase
-        .from('events')
-        .insert(eventPayload as any)
-        .select()
-        .single();
+      // 1. If Google Calendar sync is checked, create in background without redirecting
+      if (syncToGCal) {
+        try {
+          const googleEventId = await autoSyncCampusEventDirect(
+            {
+              title: eventPayload.title,
+              description: eventPayload.description,
+              location: eventPayload.location,
+              event_date: eventPayload.event_date,
+              start_time: eventPayload.start_time,
+              end_time: eventPayload.end_time,
+              college_name: eventPayload.college_name,
+              organizer_name: eventPayload.organizer_name,
+              contact_mobile: eventPayload.contact_mobile,
+            },
+            'CREATE'
+          );
+          if (googleEventId) {
+            eventPayload.google_event_id = googleEventId;
+          }
+        } catch (gcalErr) {
+          console.warn('Google Calendar background sync warning:', gcalErr);
+        }
+      }
 
+      // 2. Insert into Supabase
+      const { error: insertErr } = await supabase.from('events').insert(eventPayload);
       if (insertErr) throw insertErr;
 
-      // Broadcast in-app notification to campus peers with 7-day retention
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        title: `🎉 New Event: ${title.trim()}`,
-        body: `Happening on ${eventDate} at ${location.trim()}. Contact: ${contactMobile.trim()}`,
-        type: 'EVENT_ALERT',
-        data: {
-          event_id: insertedEvent?.id,
-          category,
-          date: eventDate,
-        },
-        expires_at: expiresAt.toISOString(),
-      } as any);
-
-      // Auto sync to Google Calendar if selected
-      if (syncToGCal) {
-        const gcalUrl = generateGoogleCalendarUrlForEvent({
-          title: title.trim(),
-          description: description.trim(),
-          location: location.trim(),
-          event_date: eventDate,
-          start_time: startTime,
-          end_time: endTime,
-          college_name: collegeName.trim(),
-          organizer_name: organizerName.trim(),
-          contact_mobile: contactMobile.trim(),
-        });
-        openGoogleCalendarUrl(gcalUrl);
-      }
+      // 3. Trigger local device notification
+      showLocalDeviceNotification(
+        '🎉 Campus Event Published!',
+        `"${title}" has been published to the Campus Hub.`
+      );
 
       onSuccess();
       onClose();
     } catch (err: any) {
       console.error('Error creating event:', err);
-      setError(err.message || 'Failed to publish event.');
+      setError(err.message || 'Failed to create event. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Publish New Campus Event"
-    >
-      <form onSubmit={handleSubmit} className="space-y-4 text-left max-h-[80vh] overflow-y-auto pr-1">
+    <Modal isOpen={isOpen} onClose={onClose} title="Post New Campus Event / Fest">
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[78vh] overflow-y-auto px-1 py-1">
         {error && (
-          <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-2xl text-xs flex items-center gap-2 border border-rose-200 dark:border-rose-800">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-xl text-xs flex items-center gap-2">
             <span>{error}</span>
           </div>
         )}
 
-        {/* Basic Info */}
+        {/* Basic Information */}
         <div className="space-y-3">
           <Input
             label="Event Title *"
-            placeholder="e.g. National Hackathon 2026 / AI Workshop"
+            placeholder="e.g. HackMatrix 2026 / National Level Symposium"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             leftIcon={<Sparkles className="w-4 h-4 text-indigo-500" />}
@@ -238,14 +228,14 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Event Category *"
-              options={EVENT_CATEGORIES}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
+              options={EVENT_CATEGORIES}
             />
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                College / Campus Tag
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                College / Institution
               </label>
               <Input
                 placeholder="e.g. Bannari Amman Institute of Technology"
@@ -350,29 +340,32 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           </div>
         </div>
 
-        {/* Poster Photo / Image URL */}
-        <div className="space-y-2">
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            Event Poster / Photo URL
-          </label>
-          <Input
-            placeholder="https://example.com/event-poster.jpg"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            leftIcon={<Image className="w-4 h-4" />}
-          />
+        {/* Device Photo Upload & Poster Selection */}
+        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-3">
+          <div>
+            <ImageUploader
+              images={uploadedImages}
+              onChange={setUploadedImages}
+              maxImages={1}
+              bucket="campus-media"
+              folder="events"
+              label="Event Poster / Device Photo"
+            />
+          </div>
 
-          {/* Quick preset posters */}
-          <div className="space-y-1">
-            <span className="text-[11px] text-slate-400 font-medium">Or pick a campus theme photo:</span>
-            <div className="flex flex-wrap gap-1.5">
+          {/* Preset Themes Fallback */}
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+              Or quickly apply a curated theme poster:
+            </span>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
               {PRESET_POSTERS.map((preset) => (
                 <button
                   key={preset.label}
                   type="button"
-                  onClick={() => setImageUrl(preset.url)}
+                  onClick={() => setUploadedImages([preset.url])}
                   className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                    imageUrl === preset.url
+                    uploadedImages[0] === preset.url
                       ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-sm'
                       : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
                   }`}
@@ -387,7 +380,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         {/* Event Description */}
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            Event Description & Itinerary
+            Event Description & Details
           </label>
           <textarea
             rows={3}
@@ -398,7 +391,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
           />
         </div>
 
-        {/* Google Calendar Sync Checkbox */}
+        {/* Google Calendar Background Auto-Sync Checkbox */}
         <label className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 cursor-pointer">
           <input
             type="checkbox"
@@ -407,9 +400,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
             className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
           />
           <div className="text-xs">
-            <span className="font-bold text-slate-900 dark:text-white">📅 Add to Google Calendar upon publishing</span>
+            <span className="font-bold text-slate-900 dark:text-white">
+              📅 Auto-sync to Google Calendar in Background
+            </span>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Automatically creates a Google Calendar event in a new tab so you never miss this event.
+              Automatically assigns this event to your Google Calendar without redirecting you away. If deleted, it also deletes from your calendar.
             </p>
           </div>
         </label>
